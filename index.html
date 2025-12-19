@@ -797,28 +797,31 @@ const DATABASE_TEMPLATES = {
 
 // ===== API CONFIG WITH PROXY SUPPORT =====
 // ✅ ALL AGENTS UPDATED FOR VERCEL PROXY
+// ===== API CONFIG WITH PROXY SUPPORT =====
 const API_CONFIG = {
   deepseek: {
     name: 'AI Agent 1',
-    // ✅ Correct DeepSeek endpoint (no /v1)
-    apiUrl: 'https://api.deepseek.com/chat/completions',
-    // ✅ Vercel proxy endpoint
+    // ✅ Simple relative paths for Vercel
     proxyUrl: '/api/proxy/deepseek',
     model: 'deepseek-chat'
   },
   openai: {
     name: 'AI Agent 2',
-    apiUrl: 'https://api.openai.com/v1/chat/completions',
     proxyUrl: '/api/proxy/openai',
     model: 'gpt-3.5-turbo'
   },
   grok: {
     name: 'AI Agent 3',
-    apiUrl: 'https://api.x.ai/v1/chat/completions',
     proxyUrl: '/api/proxy/grok',
     model: 'grok-code-fast-1'
   }
 };
+
+// ===== SIMPLIFIED URL GETTER =====
+function getApiUrl(provider) {
+  // Always use proxy URLs (simpler approach)
+  return API_CONFIG[provider].proxyUrl;
+}
 
 // ===== SMART PROXY DETECTION =====
 function getApiUrl(provider) {
