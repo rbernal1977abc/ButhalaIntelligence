@@ -1518,19 +1518,19 @@ const API_CONFIG = {
   deepseek: {
     name: 'AI Agent 1',
     // ✅ Updated to use proxy
-    baseURL: `https://${YOUR_VERCEL_URL}/api/proxy`,
+    baseURL: `https://${https://buthala-intelligence.vercel.app/}/api/proxy`,
     endpoints: { chat: '/deepseek/chat', models: '/deepseek/models' }
   },
   openai: {
     name: 'AI Agent 2',
     // ✅ Updated to use proxy
-    baseURL: `https://${YOUR_VERCEL_URL}/api/proxy`,
+    baseURL: `https://${https://buthala-intelligence.vercel.app/}/api/proxy`,
     endpoints: { chat: '/openai/chat', models: '/openai/models' }
   },
   grok: {
     name: 'AI Agent 3',
     // ✅ Updated to use proxy
-    baseURL: `https://${YOUR_VERCEL_URL}/api/proxy`,
+    baseURL: `https://${https://buthala-intelligence.vercel.app/}/api/proxy`,
     endpoints: { chat: '/grok/chat', models: '/grok/models' }
   }
 };
@@ -1608,11 +1608,17 @@ function loadApiKeys() {
 async function testApiConnection(provider) {
   const apiKeyEl = byId(`${provider}Key`);
   const apiKey = apiKeyEl?.value;
-
+  
   if (!apiKey) {
-    updateApiStatus(provider, 'error', 'No API key provided');
+    updateApiStatus(provider, 'error', 'No API key');
     return false;
   }
+  
+  // Skip actual connection test for now (models endpoint not available)
+  // Just check if key exists
+  updateApiStatus(provider, 'saved');
+  return true;
+}
 
   try {
     const res = await fetch(
