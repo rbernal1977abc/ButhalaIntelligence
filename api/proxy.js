@@ -1,25 +1,36 @@
-// api/proxy.js
+// api/proxy.js - Vercel Serverless Function
 export default async function handler(req, res) {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
   res.setHeader('Access-Control-Allow-Headers', 'Authorization,Content-Type');
   
-  // Handle preflight
+  // Handle preflight requests
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
   
   try {
-    const { provider } = req.query;
+    // Extract provider from URL path
+    const path = req.url || '';
+    let provider = '';
+    
+    if (path.includes('/deepseek')) provider = 'deepseek';
+    else if (path.includes('/openai')) provider = 'openai';
+    else if (path.includes('/grok')) provider = 'grok';
+    
+    if (!provider) {
+      return res.status(400).json({ error: 'Provider not specified in URL path' });
+    }
+    
     const { authorization } = req.headers;
     
     if (!authorization) {
-      return res.status(401).json({ error: 'No API key' });
+      return res.status(401).json({ error: 'No API key provided' });
     }
     
-    // Map providers
+    // Map providers to their actual API endpoints
     const endpoints = {
       deepseek: 'https://api.deepseek.com/chat/completions',
       openai: 'https://api.openai.com/v1/chat/completions',
@@ -27,9 +38,12 @@ export default async function handler(req, res) {
     };
     
     const apiUrl = endpoints[provider];
-    if (!apiUrl) return res.status(400).json({ error: 'Invalid provider' });
     
-    // Forward request
+    if (!apiUrl) {
+      return res.status(400).json({ error: 'Invalid provider' });
+    }
+    
+    // Forward the request to the actual API
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -40,10 +54,16 @@ export default async function handler(req, res) {
     });
     
     const data = await response.json();
-    res.status(response.status).json(data);
+    
+    // Return the API response
+    return res.status(response.status).json(data);
     
   } catch (error) {
     console.error('Proxy error:', error);
-    res.status(500).json({ error: 'Proxy error', details: error.message });
+    return res.status(500).json({ 
+      error: 'Proxy server error', 
+      details: error.message,
+      note: 'Make sure your API key is valid and you have credits'
+    });
   }
 }
