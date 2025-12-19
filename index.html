@@ -793,15 +793,10 @@ const DATABASE_TEMPLATES = {
   }
 };
 
-// ====== CRITICAL FIXES START HERE ======
-
-// ===== API CONFIG WITH PROXY SUPPORT =====
-// ✅ ALL AGENTS UPDATED FOR VERCEL PROXY
 // ===== API CONFIG WITH PROXY SUPPORT =====
 const API_CONFIG = {
   deepseek: {
     name: 'AI Agent 1',
-    // ✅ Simple relative paths for Vercel
     proxyUrl: '/api/proxy/deepseek',
     model: 'deepseek-chat'
   },
@@ -817,24 +812,16 @@ const API_CONFIG = {
   }
 };
 
-// ===== SIMPLIFIED URL GETTER =====
-function getApiUrl(provider) {
-  // Always use proxy URLs (simpler approach)
-  return API_CONFIG[provider].proxyUrl;
-}
-
 // ===== SMART PROXY DETECTION =====
 function getApiUrl(provider) {
-  // Check if we're on Vercel (has window.location.hostname containing 'vercel.app')
   const isVercel = window.location.hostname.includes('vercel.app');
   const isLocalhost = window.location.hostname.includes('localhost');
   
   if (isVercel || isLocalhost) {
-    // Use relative path for Vercel or localhost
     return API_CONFIG[provider].proxyUrl;
   } else {
-    // Direct API for other environments (not recommended due to CORS)
-    return API_CONFIG[provider].apiUrl;
+    // For other environments, use direct API if available
+    return API_CONFIG[provider].proxyUrl || API_CONFIG[provider].apiUrl;
   }
 }
 
@@ -884,7 +871,6 @@ async function queryAI(provider, query, apiKey, persona) {
   } catch (e) {
     console.error(`${provider} API error:`, e);
     
-    // Special handling for CORS errors
     if (e.message.includes('NetworkError') || e.message.includes('Failed to fetch')) {
       return { 
         success: false, 
@@ -908,8 +894,6 @@ async function testApiConnection(provider) {
   }
 
   try {
-    // Skip actual connection test (models endpoint often has CORS issues)
-    // Instead, try a minimal test query
     const testQuery = "Hello";
     const system = "You are a test agent. Respond with 'Connection successful' if you receive this message.";
     
@@ -940,10 +924,9 @@ async function testApiConnection(provider) {
     updateApiStatus(provider, 'error', `HTTP ${res.status}`);
     return false;
   } catch (e) {
-    // If it's a CORS error, show helpful message
     if (e.message.includes('NetworkError') || e.message.includes('Failed to fetch')) {
       updateApiStatus(provider, 'saved', 'Configured (proxy needed for Vercel)');
-      return true; // Return true so UI shows as configured
+      return true;
     }
     
     updateApiStatus(provider, 'error', `Connection failed: ${e.message}`);
@@ -951,7 +934,7 @@ async function testApiConnection(provider) {
   }
 }
 
-// ===== Persona prompts (UNCHANGED) =====
+// ===== Persona prompts =====
 const PERSONA = {
   analyst: `You are Bathala (Analyst). Be precise, statistical, cite assumptions, provide numbered steps and short tables when helpful.`,
   ethicist: `You are Bathala (Ethicist). Prioritize safety, fairness, consent, governance impacts. Highlight tradeoffs and ethical risks.`,
@@ -959,7 +942,7 @@ const PERSONA = {
   creative: `You are Bathala (Creative). Provide novel ideas, metaphors, and multiple alternatives. Keep it practical.`
 };
 
-// ===== Sidebar navigation (UNCHANGED) =====
+// ===== Sidebar navigation =====
 function activatePanel(name) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   const panel = document.querySelector(`#panel-${name}`);
@@ -981,7 +964,7 @@ document.querySelectorAll('.nav button').forEach(button => {
 
 console.log('Bathala v5.0: Navigation system loaded.');
 
-// ===== Status helpers (UPDATED) =====
+// ===== Status helpers =====
 function updateApiStatus(provider, status, message) {
   const dot = byId(`${provider}Status`);
   const text = byId(`${provider}StatusText`);
@@ -1027,7 +1010,7 @@ function disconnectAgents() {
   byId('statusText').textContent = 'BATHALA INTELLIGENCE: All agents disconnected';
 }
 
-// ===== Knowledge Base (IndexedDB) - UNCHANGED =====
+// ===== Knowledge Base (IndexedDB) - FIXED CONTENT STORAGE =====
 class LocalKnowledgeBase {
   constructor() {
     this.db = null;
@@ -1036,7 +1019,7 @@ class LocalKnowledgeBase {
 
   async initDatabase() {
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open('BathalaKB_v4', 1);
+      const req = indexedDB.open('BathalaKB_v5', 2); // Incremented version to fix structure
 
       req.onerror = () => reject(req.error);
       req.onsuccess = () => { this.db = req.result; resolve(); };
@@ -1044,12 +1027,26 @@ class LocalKnowledgeBase {
       req.onupgradeneeded = (e) => {
         const db = e.target.result;
 
+        // Documents store with better indexing
         if (!db.objectStoreNames.contains('documents')) {
           const s = db.createObjectStore('documents', { keyPath: 'id' });
           s.createIndex('filename', 'filename');
           s.createIndex('uploadDate', 'uploadDate');
           s.createIndex('searchableContent', 'searchableContent');
           s.createIndex('conversionType', 'conversionType');
+        } else {
+          // For existing databases, ensure indexes exist
+          const tx = e.target.transaction;
+          const s = tx.objectStore('documents');
+          
+          // Try to create indexes if they don't exist
+          try {
+            if (!s.indexNames.contains('searchableContent')) {
+              s.createIndex('searchableContent', 'searchableContent');
+            }
+          } catch (e) {
+            console.log('Index already exists or cannot be created');
+          }
         }
 
         if (!db.objectStoreNames.contains('responses')) {
@@ -1085,6 +1082,15 @@ class LocalKnowledgeBase {
     const tx = this.db.transaction(['documents'], 'readwrite');
     const store = tx.objectStore('documents');
     await store.put(doc);
+    
+    console.log('Document stored:', {
+      name: doc.filename,
+      hasContent: !!doc.content,
+      hasSearchableContent: !!doc.searchableContent,
+      searchableLength: doc.searchableContent?.length,
+      conversionType: doc.conversionType
+    });
+    
     return doc;
   }
 
@@ -1122,22 +1128,45 @@ class LocalKnowledgeBase {
 
     for (const d of docs) {
       const content = d.content.toLowerCase();
-      const search = d.searchableContent || '';
+      const searchable = d.searchableContent || '';
       const fname = d.filename.toLowerCase();
       let score = 0;
 
+      // Search in filename
       for (const t of terms) {
         if (fname.includes(t)) score += 15;
-
-        const cm = (content.match(new RegExp(t, 'gi')) || []).length;
-        if (cm > 0) score += cm * 2;
-
-        const sm = (search.match(new RegExp(t, 'gi')) || []).length;
-        if (sm > 0) score += sm * 5;
       }
 
+      // Search in searchable content (OCR text)
+      if (searchable && searchable.length > 0) {
+        for (const t of terms) {
+          const matches = (searchable.match(new RegExp(t, 'gi')) || []).length;
+          if (matches > 0) score += matches * 5;
+        }
+      }
+
+      // Search in full content (fallback)
+      if (content && content.length > 0) {
+        for (const t of terms) {
+          const matches = (content.match(new RegExp(t, 'gi')) || []).length;
+          if (matches > 0) score += matches * 2;
+        }
+      }
+
+      // Exact match in content
       if (content.includes(query.toLowerCase())) score += 50;
-      if (score > 0) results.push({ d, score });
+      
+      // Exact match in searchable content
+      if (searchable.includes(query.toLowerCase())) score += 100;
+
+      if (score > 0) {
+        results.push({ 
+          d, 
+          score,
+          hasSearchableContent: !!searchable && searchable.length > 0,
+          searchableLength: searchable?.length || 0
+        });
+      }
     }
 
     return results.sort((a, b) => b.score - a.score).map(r => r.d);
@@ -1203,7 +1232,7 @@ async function fingerprintOf(obj) {
   return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// ===== File Processor (UNCHANGED) =====
+// ===== File Processor - ENSURE OCR CONTENT IS SAVED =====
 class FileProcessor {
   showProgress() {
     const info = byId('fileProcessingInfo');
@@ -1266,6 +1295,7 @@ class FileProcessor {
       const buf = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
       let text = '';
+      let searchableText = ''; // Specifically for searchable content
       const total = pdf.numPages;
       let ocrPages = 0;
       let textPages = 0;
@@ -1281,6 +1311,7 @@ class FileProcessor {
 
         if (pt.trim().length > 10) {
           text += `Page ${n}: ${pt}\n\n`;
+          searchableText += pt + ' '; // Add to searchable text
           textPages++;
         } else {
           const vp = page.getViewport({ scale: 3 });
@@ -1293,6 +1324,7 @@ class FileProcessor {
           const { data: { text: ocrText } } = await worker.recognize(c);
           ocrPages++;
           text += `[OCR Page ${n}]: ${ocrText}\n\n`;
+          searchableText += ocrText + ' '; // Add OCR text to searchable text
         }
       }
 
@@ -1301,6 +1333,7 @@ class FileProcessor {
 
       return {
         text: text || '[No readable text]',
+        searchableText: searchableText.trim(),
         info: `PDF ${total} pages, ${textPages} text, ${ocrPages} OCR`,
         conversionType: ocrPages > 0 ? 'OCR Enhanced' : 'Direct Text Extraction'
       };
@@ -1308,6 +1341,7 @@ class FileProcessor {
       this.updateProgress(file.name, 'PDF conversion failed', 100);
       return {
         text: '[PDF processing failed]',
+        searchableText: '',
         info: 'PDF processing error',
         conversionType: 'Failed'
       };
@@ -1320,7 +1354,8 @@ class FileProcessor {
         return {
           success: false,
           content: `File "${file.name}" is too large.`,
-          extractedText: ''
+          extractedText: '',
+          searchableText: ''
         };
       }
 
@@ -1333,6 +1368,7 @@ class FileProcessor {
           success: true,
           content: this.buildMeta(file, r.info, r.conversionType) + "\n\n" + r.text,
           extractedText: r.text,
+          searchableText: r.searchableText,
           conversionType: r.conversionType
         };
       }
@@ -1348,6 +1384,7 @@ class FileProcessor {
           success: true,
           content: this.buildMeta(file, 'OCR completed', 'OCR Processing') + "\n\n" + text,
           extractedText: text,
+          searchableText: text,
           conversionType: 'OCR Processing'
         };
       }
@@ -1363,6 +1400,7 @@ class FileProcessor {
           success: true,
           content: this.buildMeta(file, 'DOCX processed', 'Direct Processing') + "\n\n" + txt,
           extractedText: txt,
+          searchableText: txt,
           conversionType: 'Direct Processing'
         };
       }
@@ -1372,10 +1410,13 @@ class FileProcessor {
         const ab = await file.arrayBuffer();
         const wb = XLSX.read(new Uint8Array(ab), { type: 'array' });
         let txt = '';
+        let searchable = '';
 
         wb.SheetNames.forEach(s => {
           const ws = wb.Sheets[s];
-          txt += `Sheet: ${s}\n` + XLSX.utils.sheet_to_csv(ws) + "\n\n";
+          const sheetText = XLSX.utils.sheet_to_csv(ws);
+          txt += `Sheet: ${s}\n` + sheetText + "\n\n";
+          searchable += sheetText + ' ';
         });
 
         this.updateProgress(file.name, 'Completed', 100);
@@ -1384,6 +1425,7 @@ class FileProcessor {
           success: true,
           content: this.buildMeta(file, `Excel processed: ${wb.SheetNames.length} sheets`, 'Direct Processing') + "\n\n" + txt,
           extractedText: txt,
+          searchableText: searchable.trim(),
           conversionType: 'Direct Processing'
         };
       }
@@ -1402,6 +1444,7 @@ class FileProcessor {
         success: true,
         content: this.buildMeta(file, 'Text file processed', 'Direct Processing') + "\n\n" + txt,
         extractedText: txt,
+        searchableText: txt,
         conversionType: 'Direct Processing'
       };
     } catch (e) {
@@ -1410,6 +1453,7 @@ class FileProcessor {
         success: true,
         content: this.buildMeta(file, 'Processing completed', 'Basic Processing') + "\n\nFile stored successfully.",
         extractedText: 'File stored',
+        searchableText: '',
         conversionType: 'Basic Processing'
       };
     }
@@ -1432,7 +1476,16 @@ CONVERSION_TYPE: ${conv}`;
         const r = await this.extractText(f);
 
         if (r.success) {
-          await knowledgeBase.storeDocument(f, r.content, r.extractedText, r.conversionType);
+          // Store with searchable text for OCR content
+          await knowledgeBase.storeDocument(f, r.content, r.searchableText, r.conversionType);
+          
+          console.log('File processed:', {
+            name: f.name,
+            hasSearchableText: !!r.searchableText,
+            searchableLength: r.searchableText?.length,
+            conversionType: r.conversionType
+          });
+          
           toast(`Stored <b>${f.name}</b> in Library`, 'success');
         } else {
           toast(r.content, 'error');
@@ -1447,7 +1500,7 @@ CONVERSION_TYPE: ${conv}`;
 
 const fileProcessor = new FileProcessor();
 
-// Documents list renderers (UNCHANGED)
+// Documents list renderers
 async function renderDocuments(into) {
   if (!into) return;
 
@@ -1462,14 +1515,20 @@ async function renderDocuments(into) {
     const d = docs[i];
     const idx = i + 1;
     const size = (d.size / (1024 * 1024)).toFixed(2);
-    const ocr = d.conversionType === 'OCR Enhanced'
+    const ocr = d.conversionType === 'OCR Enhanced' || d.conversionType === 'OCR Processing'
       ? '<span class="badge" style="border-color:var(--violet);color:var(--violet)">OCR</span>'
       : '';
+    
+    const hasSearchable = d.searchableContent && d.searchableContent.length > 0;
+    const searchableStatus = hasSearchable 
+      ? `<span class="badge" style="border-color:var(--neon);color:var(--neon)">Searchable (${d.searchableContent?.length || 0} chars)</span>`
+      : '<span class="badge" style="border-color:var(--warn);color:var(--warn)">No searchable text</span>';
 
     html += `
     <div style="display:flex;justify-content:space-between;align-items:center;border:1px solid rgba(0,255,136,.35);border-radius:8px;padding:10px;margin:8px 0;background:rgba(0,0,0,.25)">
-      <div><strong>${idx}.</strong> 📄 ${d.filename} ${ocr}
-        <div style="color:#aaa;font-size:.85rem">${d.fileType}, ${size}MB, ${d.wordCount} words</div>
+      <div>
+        <strong>${idx}.</strong> 📄 ${d.filename} ${ocr} ${searchableStatus}
+        <div style="color:#aaa;font-size:.85rem">${d.fileType}, ${size}MB, ${d.wordCount} words, ${d.conversionType}</div>
       </div>
       <button class="btn btn-danger" onclick="deleteDocument('${d.id}')">🗑️ Delete</button>
     </div>`;
@@ -1489,7 +1548,7 @@ async function deleteDocument(id) {
   toast('Document deleted', 'warn');
 }
 
-// Highlight search terms (UNCHANGED)
+// Highlight search terms
 function highlight(text, q) {
   if (!q || !text) return text;
 
@@ -1504,7 +1563,7 @@ function highlight(text, q) {
   return t;
 }
 
-// Provider arbitration (UNCHANGED)
+// Provider arbitration
 function getArbitrationProvider() {
   for (const p of ['openai', 'deepseek', 'grok']) {
     const el = byId(`${p}Key`);
@@ -1513,7 +1572,7 @@ function getArbitrationProvider() {
   return null;
 }
 
-// Combined AI Query (UNCHANGED)
+// Combined AI Query
 async function combinedAIQuery(provider, query, apiKey, persona) {
   const relevantDocs = await knowledgeBase.searchDocuments(query);
 
@@ -1528,7 +1587,9 @@ async function combinedAIQuery(provider, query, apiKey, persona) {
 
   let all = '';
   relevantDocs.forEach((d, i) => {
-    all += `DOCUMENT ${i + 1}: ${d.filename}\n${(d.searchableContent || '').slice(0, 12000)}\n\n`;
+    // Use searchable content if available, otherwise use regular content
+    const contentToUse = d.searchableContent || d.content || '';
+    all += `DOCUMENT ${i + 1}: ${d.filename} (${d.conversionType})\n${contentToUse.slice(0, 12000)}\n\n`;
   });
 
   const enhanced = `${PERSONA[persona || 'strategist']}
@@ -1541,7 +1602,7 @@ ${all}`;
   return await queryAI(provider, enhanced, apiKey, persona);
 }
 
-// Database AI Query (UNCHANGED)
+// Database AI Query
 async function databaseAIQuery(provider, query, apiKey, persona) {
   const connectedDbs = dbManager.getConnectedDatabases();
   
@@ -1599,7 +1660,7 @@ Focus on the database structure and how it relates to the user's query.`;
   return await queryAI(provider, enhanced, apiKey, persona);
 }
 
-// Super Mode AI Query (UNCHANGED)
+// Super Mode AI Query
 async function superModeAIQuery(provider, query, apiKey, persona) {
   const relevantDocs = await knowledgeBase.searchDocuments(query);
   const connectedDbs = dbManager.getConnectedDatabases();
@@ -1609,7 +1670,9 @@ async function superModeAIQuery(provider, query, apiKey, persona) {
   if (relevantDocs.length > 0) {
     context += '📚 LIBRARY DOCUMENTS:\n';
     relevantDocs.forEach((d, i) => {
-      context += `DOCUMENT ${i + 1}: ${d.filename}\n${(d.searchableContent || '').slice(0, 8000)}\n\n`;
+      // Use searchable content for OCR files
+      const contentToUse = d.searchableContent || d.content || '';
+      context += `DOCUMENT ${i + 1}: ${d.filename} (${d.conversionType})\n${contentToUse.slice(0, 8000)}\n\n`;
     });
   } else {
     context += '📚 LIBRARY: No matching documents found\n\n';
@@ -1654,7 +1717,7 @@ Perform comprehensive analysis using ALL available data sources. Integrate insig
   return await queryAI(provider, enhanced, apiKey, persona);
 }
 
-// Forecast AI Query (UNCHANGED)
+// Forecast AI Query
 async function forecastAIQuery(provider, query, apiKey, persona) {
   const resultsCards = $$('.response-card');
   if (resultsCards.length === 0) {
@@ -1702,7 +1765,7 @@ Focus on actionable insights and evidence-based projections.`;
   return await queryAI(provider, enhanced, apiKey, persona);
 }
 
-// Render responses (UPDATED)
+// Render responses
 function renderCompareResults(query, results) {
   let html = `<h3 style="color:var(--warn);margin-bottom:12px">🚀 AI SEARCH: "${query}"</h3><div class="response-grid">`;
   for(const r of results){
@@ -1717,13 +1780,99 @@ function renderCompareResults(query, results) {
   return html;
 }
 
-// Loading helpers for search (UNCHANGED)
+// Loading helpers for search
 function setSearchVisible() {
   const sec = byId('resultsSection');
   if(sec) sec.style.display='';
 }
 
-// Search actions + History push (UPDATED)
+// ====== CRITICAL FIX: LOCAL CONTENT SEARCH FUNCTION ======
+async function performLocalContentSearch() {
+  const q = byId('searchInput').value.trim();
+  if(!q) return toast('Enter a search query','warn');
+  
+  setSearchVisible(); 
+  byId('statusText').textContent = 'BATHALA INTELLIGENCE: Searching local content (OCR)…';
+  
+  const docs = await knowledgeBase.searchDocuments(q);
+  
+  if(docs.length === 0) {
+    byId('resultsArea').innerHTML = `<div class='card'>❌ No content matches "${q}"</div>`;
+  } else {
+    let html = '';
+    docs.forEach((d, index) => {
+      // Use searchable content for OCR files, fallback to regular content
+      const contentToSearch = d.searchableContent || d.content || '';
+      const contentToShow = contentToSearch.slice(0, 1500);
+      const highlighted = highlight(contentToShow, q);
+      
+      const ocrBadge = d.conversionType === 'OCR Enhanced' || d.conversionType === 'OCR Processing'
+        ? '<span class="badge" style="border-color:var(--violet);color:var(--violet);margin-left:8px">OCR</span>'
+        : '';
+      
+      const searchableBadge = d.searchableContent && d.searchableContent.length > 0
+        ? `<span class="badge" style="border-color:var(--neon);color:var(--neon);margin-left:8px">Searchable (${d.searchableContent.length} chars)</span>`
+        : '';
+      
+      html += `<div class='response-card'>
+        <div class='response-header'>
+          <div class='provider-badge'>📖 ${d.filename} ${ocrBadge} ${searchableBadge}</div>
+          <div>${(d.size/(1024*1024)).toFixed(2)}MB • ${d.conversionType}</div>
+        </div>
+        <div class='response-content'>
+          <div style="margin-bottom:10px;color:var(--muted);font-size:0.9rem">
+            <strong>Found ${contentToSearch.includes(q.toLowerCase()) ? 'exact match' : 'partial matches'}</strong>
+          </div>
+          ${highlighted}${contentToSearch.length > 1500 ? '…' : ''}
+          <div style="margin-top:12px;padding:8px;background:rgba(0,255,136,.05);border-radius:6px;font-size:0.85rem">
+            <strong>Document Info:</strong> ${d.fileType}, ${d.wordCount} words, uploaded ${new Date(d.uploadDate).toLocaleDateString()}
+          </div>
+        </div>
+      </div>`;
+    });
+    
+    byId('resultsArea').innerHTML = html;
+    
+    // Log debug info
+    console.log('Content search results:', {
+      query: q,
+      found: docs.length,
+      documents: docs.map(d => ({
+        name: d.filename,
+        hasSearchableContent: !!d.searchableContent,
+        searchableLength: d.searchableContent?.length,
+        conversionType: d.conversionType
+      }))
+    });
+    
+    await knowledgeBase.pushHistory({ 
+      type: 'search', 
+      title: `Content: ${q.slice(0,48)}`, 
+      payload: html 
+    }); 
+    await refreshHistory();
+  }
+}
+
+// All other search functions remain...
+async function performLocalFileSearch(){
+  const q=byId('searchInput').value.trim(); if(!q) return toast('Enter a search query','warn');
+  setSearchVisible(); byId('statusText').textContent='BATHALA INTELLIGENCE: Searching local file database…';
+  const docs=await knowledgeBase.searchDocuments(q);
+  if(docs.length===0){
+    byId('resultsArea').innerHTML = `<div class='card'>❌ No files match "${q}"</div>`;
+  } else {
+    let ctx='Found '+docs.length+" file(s):\n\n";
+    docs.forEach((d,i)=>{ 
+      const ocrNote = d.conversionType === 'OCR Enhanced' ? ' (OCR Processed)' : '';
+      ctx+=`📄 ${i+1}. ${d.filename}${ocrNote} (${(d.size/(1024*1024)).toFixed(2)}MB)\n`; 
+    });
+    const body = `<div class='response-card'><div class='response-header'><div class='provider-badge'>📁 File Database</div><div>File Search</div></div><div class='response-content'>${highlight(ctx,q)}</div></div>`;
+    byId('resultsArea').innerHTML = body;
+    await knowledgeBase.pushHistory({ type:'search', title:`Files: ${q.slice(0,48)}`, payload: body }); await refreshHistory();
+  }
+}
+
 async function performAISearch() {
   const query=byId('searchInput').value.trim();
   const provider=byId('aiProvider').value;
@@ -1759,39 +1908,6 @@ async function performAISearch() {
     await knowledgeBase.pushHistory({ type:'search', title: `${API_CONFIG[provider].name}: ${query.slice(0,48)}`, payload: html }); await refreshHistory();
   }
   byId('statusText').textContent='BATHALA INTELLIGENCE: AI search completed';
-}
-
-// All other search functions remain UNCHANGED...
-async function performLocalFileSearch(){
-  const q=byId('searchInput').value.trim(); if(!q) return toast('Enter a search query','warn');
-  setSearchVisible(); byId('statusText').textContent='BATHALA INTELLIGENCE: Searching local file database…';
-  const docs=await knowledgeBase.searchDocuments(q);
-  if(docs.length===0){
-    byId('resultsArea').innerHTML = `<div class='card'>❌ No files match "${q}"</div>`;
-  } else {
-    let ctx='Found '+docs.length+" file(s):\n\n";
-    docs.forEach((d,i)=>{ ctx+=`📄 ${i+1}. ${d.filename} (${(d.size/(1024*1024)).toFixed(2)}MB)\n`; });
-    const body = `<div class='response-card'><div class='response-header'><div class='provider-badge'>📁 File Database</div><div>File Search</div></div><div class='response-content'>${highlight(ctx,q)}</div></div>`;
-    byId('resultsArea').innerHTML = body;
-    await knowledgeBase.pushHistory({ type:'search', title:`Files: ${q.slice(0,48)}`, payload: body }); await refreshHistory();
-  }
-}
-
-async function performLocalContentSearch(){
-  const q=byId('searchInput').value.trim(); if(!q) return toast('Enter a search query','warn');
-  setSearchVisible(); byId('statusText').textContent='BATHALA INTELLIGENCE: Searching local content (OCR)…';
-  const docs=await knowledgeBase.searchDocuments(q);
-  if(docs.length===0){
-    byId('resultsArea').innerHTML = `<div class='card'>❌ No content matches "${q}"</div>`;
-  } else {
-    let html='';
-    docs.forEach((d)=>{
-      const prev = highlight(d.content.slice(0,1500), q);
-      html+=`<div class='response-card'><div class='response-header'><div class='provider-badge'>📖 ${d.filename}</div><div>${(d.size/(1024*1024)).toFixed(2)}MB</div></div><div class='response-content'>${prev}${d.content.length>1500?'…':''}</div></div>`;
-    });
-    byId('resultsArea').innerHTML = html;
-    await knowledgeBase.pushHistory({ type:'search', title:`Content: ${q.slice(0,48)}`, payload: html }); await refreshHistory();
-  }
 }
 
 async function performCombinedSearch(){
@@ -2025,7 +2141,7 @@ async function performForecastAnalysis() {
   byId('statusText').textContent = 'BATHALA INTELLIGENCE: Forecast analysis completed';
 }
 
-// ===== Consensus Synthesis + Visualization (UNCHANGED) =====
+// ===== Consensus Synthesis + Visualization =====
 function jaccard(a,b){
   const A=new Set((a||'').split(/\W+/).map(x=>x.toLowerCase()).filter(Boolean));
   const B=new Set((b||'').split(/\W+/).map(x=>x.toLowerCase()).filter(Boolean));
@@ -2161,7 +2277,7 @@ Return ONLY JSON object.`;
   toast('Consensus synthesized','success');
 }
 
-// ===== History renderers (UNCHANGED) =====
+// ===== History renderers =====
 async function refreshHistory(){
   const s=byId('searchHistory'); const c=byId('consensusHistory');
   if(!s||!c) return;
@@ -2177,7 +2293,7 @@ async function restoreHistory(id){
   req.onsuccess=()=>{ const rec=req.result; if(rec){ setSearchVisible(); if(rec.type==='search'){ byId('resultsArea').innerHTML = rec.payload; } else { byId('consensusBlock').style.display='block'; byId('consensusBlock').innerHTML = rec.payload; } } };
 }
 
-// ===== Database Manager (UNCHANGED from your original) =====
+// ===== Database Manager =====
 const BACKEND_CONFIG = {
   enabled: false,
   url: 'http://localhost:3001/api',
@@ -2585,7 +2701,7 @@ function removeDatabase(connectionId) {
   }
 }
 
-// Render database connections (UNCHANGED)
+// Render database connections
 function renderDatabaseConnections() {
   const container = byId('databaseConnections');
   const connections = dbManager.getConnections();
@@ -2717,7 +2833,7 @@ function renderDatabaseConnections() {
   }).join('');
 }
 
-// Show add connection modal (UNCHANGED)
+// Show add connection modal
 function showAddConnectionModal() {
   const modalHtml = `
     <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.8); display: flex; align-items: center; justify-content: center; z-index: 10000;">
@@ -2891,7 +3007,7 @@ async function createConnection() {
   }
 }
 
-// ===== Events (UPDATED) =====
+// ===== Events =====
 function bindEvents(){
   const fileInput = byId('fileInput');
   if(fileInput){
@@ -2961,7 +3077,7 @@ function bindEvents(){
   });
 }
 
-// ===== Init (UPDATED) =====
+// ===== Init =====
 (async function init(){
   await knowledgeBase.ready;
   loadApiKeys();
