@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Bathala Intelligence — v6.0</title>
+  <title>Bathala Intelligence — v5.0</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -11,7 +11,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <!-- PDF.js, Tesseract, Mammoth, SheetJS -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
-  <script src="https://unpkg.com/tesseract.js@v4.0.0/dist/tesseract.min.js"></script>
+  <script src="https://unpkg.com/tesseract.js@v2.1.0/dist/tesseract.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <!-- SQL.js for SQLite support -->
@@ -431,59 +431,6 @@
     .db-type-server { background: rgba(155,89,182,.2); border: 1px solid var(--violet); }
     .db-type-backend { background: rgba(255,165,0,.2); border: 1px solid var(--warn); }
 
-    /* Search Navigation */
-    .search-navigation {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      margin-top: 12px;
-      padding: 10px;
-      background: rgba(0,0,0,.3);
-      border-radius: 8px;
-      border: 1px solid rgba(0,255,136,.25);
-    }
-
-    .search-navigation button {
-      background: rgba(0,255,136,.1);
-      border: 1px solid var(--neon);
-      color: var(--neon);
-      border-radius: 6px;
-      padding: 6px 12px;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-
-    .search-navigation button:hover:not(:disabled) {
-      background: rgba(0,255,136,.2);
-      transform: translateY(-1px);
-    }
-
-    .search-navigation button:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-    }
-
-    .match-info {
-      font-size: 0.9rem;
-      color: var(--muted);
-    }
-
-    .highlight-match {
-      background: rgba(255,255,0,0.3) !important;
-      border: 1px solid yellow;
-      padding: 2px 4px;
-      border-radius: 3px;
-    }
-
-    .page-indicator {
-      background: rgba(155,89,182,.2);
-      border: 1px solid var(--violet);
-      padding: 2px 8px;
-      border-radius: 4px;
-      font-size: 0.8rem;
-    }
-
     /* Footer */
     footer { margin: 24px 0 8px; text-align: center; color: var(--muted); }
 
@@ -581,14 +528,6 @@
           <div id="resultsInfo" style="color:var(--neon)">Ready for analysis</div>
         </div>
         <div id="resultsArea"></div>
-        
-        <!-- Search Navigation -->
-        <div class="search-navigation" id="searchNavigation" style="display:none">
-          <button id="prevMatchBtn" disabled>◀ Previous</button>
-          <div class="match-info" id="matchInfo">Match 1 of 1</div>
-          <button id="nextMatchBtn" disabled>Next ▶</button>
-        </div>
-        
         <div style="margin-top:12px">
           <button class="btn btn-primary" id="checkBalanceBtn" style="display:none">
             ⚖️ CHECK & BALANCE
@@ -750,6 +689,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs
 
 // ===== Hybrid Database Connection Management
 const DATABASE_TEMPLATES = {
+  // ===== FILE-BASED DATABASES (Direct Browser Access) =====
   sqlite: {
     name: 'SQLite Database File',
     icon: '🗃️',
@@ -789,6 +729,7 @@ const DATABASE_TEMPLATES = {
     ]
   },
   
+  // ===== SERVER DATABASES (Require Backend API) =====
   postgresql: {
     name: 'PostgreSQL Server',
     icon: '🐘',
@@ -852,10 +793,15 @@ const DATABASE_TEMPLATES = {
   }
 };
 
-// ===== API CONFIG =====
+// ====== CRITICAL FIXES START HERE ======
+
+// ===== API CONFIG WITH PROXY SUPPORT =====
+// ✅ ALL AGENTS UPDATED FOR VERCEL PROXY
+// ===== API CONFIG WITH PROXY SUPPORT =====
 const API_CONFIG = {
   deepseek: {
     name: 'AI Agent 1',
+    // ✅ Simple relative paths for Vercel
     proxyUrl: '/api/proxy/deepseek',
     model: 'deepseek-chat'
   },
@@ -871,15 +817,24 @@ const API_CONFIG = {
   }
 };
 
+// ===== SIMPLIFIED URL GETTER =====
+function getApiUrl(provider) {
+  // Always use proxy URLs (simpler approach)
+  return API_CONFIG[provider].proxyUrl;
+}
+
 // ===== SMART PROXY DETECTION =====
 function getApiUrl(provider) {
+  // Check if we're on Vercel (has window.location.hostname containing 'vercel.app')
   const isVercel = window.location.hostname.includes('vercel.app');
   const isLocalhost = window.location.hostname.includes('localhost');
   
   if (isVercel || isLocalhost) {
+    // Use relative path for Vercel or localhost
     return API_CONFIG[provider].proxyUrl;
   } else {
-    return API_CONFIG[provider].proxyUrl || API_CONFIG[provider].apiUrl;
+    // Direct API for other environments (not recommended due to CORS)
+    return API_CONFIG[provider].apiUrl;
   }
 }
 
@@ -929,6 +884,7 @@ async function queryAI(provider, query, apiKey, persona) {
   } catch (e) {
     console.error(`${provider} API error:`, e);
     
+    // Special handling for CORS errors
     if (e.message.includes('NetworkError') || e.message.includes('Failed to fetch')) {
       return { 
         success: false, 
@@ -952,6 +908,8 @@ async function testApiConnection(provider) {
   }
 
   try {
+    // Skip actual connection test (models endpoint often has CORS issues)
+    // Instead, try a minimal test query
     const testQuery = "Hello";
     const system = "You are a test agent. Respond with 'Connection successful' if you receive this message.";
     
@@ -982,9 +940,10 @@ async function testApiConnection(provider) {
     updateApiStatus(provider, 'error', `HTTP ${res.status}`);
     return false;
   } catch (e) {
+    // If it's a CORS error, show helpful message
     if (e.message.includes('NetworkError') || e.message.includes('Failed to fetch')) {
       updateApiStatus(provider, 'saved', 'Configured (proxy needed for Vercel)');
-      return true;
+      return true; // Return true so UI shows as configured
     }
     
     updateApiStatus(provider, 'error', `Connection failed: ${e.message}`);
@@ -992,7 +951,7 @@ async function testApiConnection(provider) {
   }
 }
 
-// ===== Persona prompts =====
+// ===== Persona prompts (UNCHANGED) =====
 const PERSONA = {
   analyst: `You are Bathala (Analyst). Be precise, statistical, cite assumptions, provide numbered steps and short tables when helpful.`,
   ethicist: `You are Bathala (Ethicist). Prioritize safety, fairness, consent, governance impacts. Highlight tradeoffs and ethical risks.`,
@@ -1000,7 +959,7 @@ const PERSONA = {
   creative: `You are Bathala (Creative). Provide novel ideas, metaphors, and multiple alternatives. Keep it practical.`
 };
 
-// ===== Sidebar navigation =====
+// ===== Sidebar navigation (UNCHANGED) =====
 function activatePanel(name) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   const panel = document.querySelector(`#panel-${name}`);
@@ -1020,9 +979,9 @@ document.querySelectorAll('.nav button').forEach(button => {
   });
 });
 
-console.log('Bathala v6.0: Navigation system loaded.');
+console.log('Bathala v5.0: Navigation system loaded.');
 
-// ===== Status helpers =====
+// ===== Status helpers (UPDATED) =====
 function updateApiStatus(provider, status, message) {
   const dot = byId(`${provider}Status`);
   const text = byId(`${provider}StatusText`);
@@ -1068,7 +1027,7 @@ function disconnectAgents() {
   byId('statusText').textContent = 'BATHALA INTELLIGENCE: All agents disconnected';
 }
 
-// ===== Knowledge Base (IndexedDB) - ENHANCED WITH PAGES =====
+// ===== Knowledge Base (IndexedDB) - UNCHANGED =====
 class LocalKnowledgeBase {
   constructor() {
     this.db = null;
@@ -1077,7 +1036,7 @@ class LocalKnowledgeBase {
 
   async initDatabase() {
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open('BathalaKB_v7', 3); // Incremented version
+      const req = indexedDB.open('BathalaKB_v4', 1);
 
       req.onerror = () => reject(req.error);
       req.onsuccess = () => { this.db = req.result; resolve(); };
@@ -1085,21 +1044,12 @@ class LocalKnowledgeBase {
       req.onupgradeneeded = (e) => {
         const db = e.target.result;
 
-        // Documents store with enhanced indexing
         if (!db.objectStoreNames.contains('documents')) {
           const s = db.createObjectStore('documents', { keyPath: 'id' });
           s.createIndex('filename', 'filename');
           s.createIndex('uploadDate', 'uploadDate');
           s.createIndex('searchableContent', 'searchableContent');
           s.createIndex('conversionType', 'conversionType');
-        }
-
-        // Pages store for PDF page-by-page storage
-        if (!db.objectStoreNames.contains('pages')) {
-          const p = db.createObjectStore('pages', { keyPath: 'id' });
-          p.createIndex('documentId', 'documentId');
-          p.createIndex('pageNumber', 'pageNumber');
-          p.createIndex('content', 'content');
         }
 
         if (!db.objectStoreNames.contains('responses')) {
@@ -1116,7 +1066,7 @@ class LocalKnowledgeBase {
     });
   }
 
-  async storeDocument(file, fullContent, searchableContent, conversionType, pages = []) {
+  async storeDocument(file, fullContent, searchableContent, conversionType) {
     await this.ready;
 
     const doc = {
@@ -1129,28 +1079,12 @@ class LocalKnowledgeBase {
       size: file.size,
       wordCount: (searchableContent || '').split(/\s+/).filter(Boolean).length,
       storagePath: 'Ai CHIP',
-      conversionType: conversionType || 'Direct Processing',
-      pageCount: pages.length
+      conversionType: conversionType || 'Direct Processing'
     };
 
-    const tx = this.db.transaction(['documents', 'pages'], 'readwrite');
-    const docStore = tx.objectStore('documents');
-    const pageStore = tx.objectStore('pages');
-    
-    await docStore.put(doc);
-    
-    // Store pages if provided
-    for (const page of pages) {
-      const pageRecord = {
-        id: `${doc.id}_page_${page.pageNumber}`,
-        documentId: doc.id,
-        pageNumber: page.pageNumber,
-        content: page.content,
-        isOCR: page.isOCR || false
-      };
-      await pageStore.put(pageRecord);
-    }
-    
+    const tx = this.db.transaction(['documents'], 'readwrite');
+    const store = tx.objectStore('documents');
+    await store.put(doc);
     return doc;
   }
 
@@ -1166,146 +1100,47 @@ class LocalKnowledgeBase {
     });
   }
 
-  async getDocumentPages(documentId) {
+  async deleteDocument(id) {
     await this.ready;
-    const tx = this.db.transaction(['pages'], 'readonly');
-    const st = tx.objectStore('pages');
-    const idx = st.index('documentId');
-    
+    const tx = this.db.transaction(['documents'], 'readwrite');
+    const st = tx.objectStore('documents');
+
     return new Promise((resolve, reject) => {
-      const r = idx.getAll(documentId);
-      r.onsuccess = () => resolve(r.result.sort((a, b) => a.pageNumber - b.pageNumber));
+      const r = st.delete(id);
+      r.onsuccess = () => resolve();
       r.onerror = () => reject(r.error);
     });
   }
 
-  async deleteDocument(id) {
-    await this.ready;
-    const tx = this.db.transaction(['documents', 'pages'], 'readwrite');
-    const docStore = tx.objectStore('documents');
-    const pageStore = tx.objectStore('pages');
-    const idx = pageStore.index('documentId');
-    
-    // First delete all pages
-    const pages = await new Promise((resolve) => {
-      const r = idx.getAll(id);
-      r.onsuccess = () => resolve(r.result);
-      r.onerror = () => resolve([]);
-    });
-    
-    for (const page of pages) {
-      await pageStore.delete(page.id);
-    }
-    
-    // Then delete the document
-    await docStore.delete(id);
-  }
-
-  async searchDocumentsExact(query) {
+  async searchDocuments(query) {
     await this.ready;
     const docs = await this.getAllDocuments();
     if (docs.length === 0) return [];
 
-    const queryLower = query.toLowerCase();
-    const terms = queryLower.split(/\s+/).filter(t => t.length > 0);
+    const terms = query.toLowerCase().split(/\s+/).filter(t => t.length > 2);
     const results = [];
 
     for (const d of docs) {
       const content = d.content.toLowerCase();
-      const searchable = d.searchableContent || '';
+      const search = d.searchableContent || '';
       const fname = d.filename.toLowerCase();
       let score = 0;
-      let matches = [];
-      let exactMatches = 0;
 
-      // Search in filename
-      if (fname.includes(queryLower)) {
-        score += 20;
-        matches.push(`Filename contains "${query}"`);
+      for (const t of terms) {
+        if (fname.includes(t)) score += 15;
+
+        const cm = (content.match(new RegExp(t, 'gi')) || []).length;
+        if (cm > 0) score += cm * 2;
+
+        const sm = (search.match(new RegExp(t, 'gi')) || []).length;
+        if (sm > 0) score += sm * 5;
       }
 
-      // Search in searchable content (exact matches)
-      if (searchable) {
-        const searchableTerms = searchable.split(/\s+/);
-        
-        // Count exact word matches
-        for (const term of terms) {
-          const termRegex = new RegExp(`\\b${term}\\b`, 'gi');
-          const termMatches = (searchable.match(termRegex) || []).length;
-          exactMatches += termMatches;
-          score += termMatches * 10;
-          
-          if (termMatches > 0) {
-            matches.push(`Found "${term}" ${termMatches} time(s)`);
-          }
-        }
-      }
-
-      // Search in full content (fallback)
-      if (content && content.length > 0) {
-        for (const term of terms) {
-          const termRegex = new RegExp(`\\b${term}\\b`, 'gi');
-          const termMatches = (content.match(termRegex) || []).length;
-          if (termMatches > 0) {
-            score += termMatches * 5;
-            matches.push(`Found "${term}" ${termMatches} time(s) in full content`);
-          }
-        }
-      }
-
-      if (score > 0) {
-        results.push({ 
-          d, 
-          score,
-          exactMatches,
-          matches,
-          hasSearchableContent: !!searchable && searchable.length > 0,
-          searchableLength: searchable?.length || 0
-        });
-      }
+      if (content.includes(query.toLowerCase())) score += 50;
+      if (score > 0) results.push({ d, score });
     }
 
     return results.sort((a, b) => b.score - a.score).map(r => r.d);
-  }
-
-  async searchDocumentPages(documentId, query) {
-    await this.ready;
-    const pages = await this.getDocumentPages(documentId);
-    if (pages.length === 0) return [];
-
-    const queryLower = query.toLowerCase();
-    const terms = queryLower.split(/\s+/).filter(t => t.length > 0);
-    const matchingPages = [];
-
-    for (const page of pages) {
-      const content = page.content.toLowerCase();
-      let score = 0;
-      let matches = [];
-      
-      for (const term of terms) {
-        const termRegex = new RegExp(`\\b${term}\\b`, 'gi');
-        const termMatches = (content.match(termRegex) || []).length;
-        if (termMatches > 0) {
-          score += termMatches * 10;
-          matches.push({
-            term,
-            count: termMatches,
-            positions: []
-          });
-        }
-      }
-      
-      if (score > 0) {
-        matchingPages.push({
-          page,
-          score,
-          matches,
-          totalMatches: matches.reduce((sum, m) => sum + m.count, 0)
-        });
-      }
-    }
-
-    return matchingPages.sort((a, b) => b.score - a.score);
   }
 
   async putResponse(fingerprint, payload) {
@@ -1368,29 +1203,8 @@ async function fingerprintOf(obj) {
   return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// ===== IMPROVED File Processor - CONSISTENT PDF/OCR =====
-class EnhancedFileProcessor {
-  constructor() {
-    this.ocrWorker = null;
-    this.initOCR();
-  }
-
-  async initOCR() {
-    try {
-      this.ocrWorker = await Tesseract.createWorker('eng', 1, {
-        logger: m => console.log('OCR:', m),
-        errorHandler: e => console.error('OCR Error:', e)
-      });
-      await this.ocrWorker.setParameters({
-        preserve_interword_spaces: '1',
-        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!?;:()-"\'\n\r\t',
-        tessedit_pageseg_mode: '3' // Auto page segmentation
-      });
-    } catch (e) {
-      console.error('Failed to initialize OCR worker:', e);
-    }
-  }
-
+// ===== File Processor (UNCHANGED) =====
+class FileProcessor {
   showProgress() {
     const info = byId('fileProcessingInfo');
     if (info) info.style.display = 'block';
@@ -1447,174 +1261,55 @@ class EnhancedFileProcessor {
     }
   }
 
-  async extractTextFromPDFPage(page, pageNumber, forceOCR = false) {
-    try {
-      // Try text extraction first (unless forceOCR is true)
-      if (!forceOCR) {
-        const textContent = await page.getTextContent();
-        const pageText = textContent.items.map(item => item.str).join(' ');
-        
-        // Check if we got meaningful text (more than just a few characters)
-        if (pageText.trim().length > 50) {
-          return {
-            success: true,
-            text: pageText,
-            isOCR: false,
-            confidence: 'high'
-          };
-        }
-      }
-      
-      // Use OCR for low-text or forced OCR pages
-      const viewport = page.getViewport({ scale: 2.0 }); // Higher scale for better OCR
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
-      
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      
-      await page.render({
-        canvasContext: context,
-        viewport: viewport
-      }).promise;
-      
-      // Use Tesseract OCR
-      if (this.ocrWorker) {
-        const { data: { text, confidence } } = await this.ocrWorker.recognize(canvas);
-        
-        return {
-          success: true,
-          text: text || '',
-          isOCR: true,
-          confidence: confidence || 0
-        };
-      } else {
-        // Fallback: Try to initialize OCR worker
-        await this.initOCR();
-        if (this.ocrWorker) {
-          const { data: { text, confidence } } = await this.ocrWorker.recognize(canvas);
-          
-          return {
-            success: true,
-            text: text || '',
-            isOCR: true,
-            confidence: confidence || 0
-          };
-        }
-      }
-      
-      return {
-        success: false,
-        text: '',
-        isOCR: false,
-        confidence: 0
-      };
-    } catch (error) {
-      console.error(`Error processing page ${pageNumber}:`, error);
-      return {
-        success: false,
-        text: `[Error processing page ${pageNumber}]`,
-        isOCR: false,
-        confidence: 0
-      };
-    }
-  }
-
   async processPDF(file) {
     try {
       const buf = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ 
-        data: buf,
-        disableFontFace: true,
-        useSystemFonts: true
-      }).promise;
-      
-      const totalPages = pdf.numPages;
-      let allText = '';
-      let allSearchableText = '';
+      const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+      let text = '';
+      const total = pdf.numPages;
       let ocrPages = 0;
       let textPages = 0;
-      const pages = [];
-      
-      this.showProgress();
-      this.updateProgress(file.name, 'Initializing PDF processing...', 5);
 
-      // Process each page
-      for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
-        this.updateProgress(file.name, `Processing page ${pageNum}/${totalPages}`, 
-                          ((pageNum - 1) / totalPages) * 90 + 5, pageNum, totalPages, ocrPages);
+      const worker = await Tesseract.createWorker('eng');
 
-        try {
-          const page = await pdf.getPage(pageNum);
-          const result = await this.extractTextFromPDFPage(page, pageNum);
-          
-          let pageText = result.text || '';
-          let isOCR = result.isOCR;
-          
-          // If text is very short, try OCR
-          if (pageText.trim().length < 100 && !isOCR) {
-            const ocrResult = await this.extractTextFromPDFPage(page, pageNum, true);
-            if (ocrResult.success && ocrResult.text.trim().length > pageText.trim().length) {
-              pageText = ocrResult.text;
-              isOCR = true;
-            }
-          }
-          
-          if (isOCR) {
-            ocrPages++;
-            allText += `[OCR Page ${pageNum}]: ${pageText}\n\n`;
-          } else {
-            textPages++;
-            allText += `Page ${pageNum}: ${pageText}\n\n`;
-          }
-          
-          // Store page individually
-          pages.push({
-            pageNumber: pageNum,
-            content: pageText.toLowerCase(),
-            isOCR: isOCR
-          });
-          
-          allSearchableText += pageText.toLowerCase() + ' ';
-          
-        } catch (pageError) {
-          console.error(`Error on page ${pageNum}:`, pageError);
-          allText += `[Error on page ${pageNum}]\n\n`;
+      for (let n = 1; n <= total; n++) {
+        this.updateProgress(file.name, `Processing page ${n}/${total}`, ((n - 1) / total) * 70 + 30, n, total, ocrPages);
+
+        const page = await pdf.getPage(n);
+        const tc = await page.getTextContent();
+        const pt = tc.items.map(i => i.str).join(' ');
+
+        if (pt.trim().length > 10) {
+          text += `Page ${n}: ${pt}\n\n`;
+          textPages++;
+        } else {
+          const vp = page.getViewport({ scale: 3 });
+          const c = document.createElement('canvas');
+          const ctx = c.getContext('2d');
+          c.width = vp.width;
+          c.height = vp.height;
+
+          await page.render({ canvasContext: ctx, viewport: vp }).promise;
+          const { data: { text: ocrText } } = await worker.recognize(c);
+          ocrPages++;
+          text += `[OCR Page ${n}]: ${ocrText}\n\n`;
         }
       }
 
-      this.updateProgress(file.name, 'Finalizing...', 98, totalPages, totalPages, ocrPages);
-      
-      // Clean up OCR worker
-      if (this.ocrWorker) {
-        await this.ocrWorker.terminate();
-        this.ocrWorker = null;
-      }
-
-      this.updateProgress(file.name, 'Completed!', 100);
+      await worker.terminate();
+      this.updateProgress(file.name, 'PDF conversion completed!', 100, total, total, ocrPages);
 
       return {
-        text: allText || '[No readable text]',
-        searchableText: allSearchableText.trim(),
-        info: `PDF ${totalPages} pages, ${textPages} text, ${ocrPages} OCR`,
-        conversionType: ocrPages > 0 ? 'OCR Enhanced' : 'Direct Text Extraction',
-        pages: pages
+        text: text || '[No readable text]',
+        info: `PDF ${total} pages, ${textPages} text, ${ocrPages} OCR`,
+        conversionType: ocrPages > 0 ? 'OCR Enhanced' : 'Direct Text Extraction'
       };
     } catch (e) {
-      console.error('PDF processing error:', e);
-      this.updateProgress(file.name, 'PDF processing failed', 100);
-      
-      if (this.ocrWorker) {
-        await this.ocrWorker.terminate();
-        this.ocrWorker = null;
-      }
-      
+      this.updateProgress(file.name, 'PDF conversion failed', 100);
       return {
         text: '[PDF processing failed]',
-        searchableText: '',
         info: 'PDF processing error',
-        conversionType: 'Failed',
-        pages: []
+        conversionType: 'Failed'
       };
     }
   }
@@ -1625,8 +1320,7 @@ class EnhancedFileProcessor {
         return {
           success: false,
           content: `File "${file.name}" is too large.`,
-          extractedText: '',
-          searchableText: ''
+          extractedText: ''
         };
       }
 
@@ -1639,34 +1333,22 @@ class EnhancedFileProcessor {
           success: true,
           content: this.buildMeta(file, r.info, r.conversionType) + "\n\n" + r.text,
           extractedText: r.text,
-          searchableText: r.searchableText,
-          conversionType: r.conversionType,
-          pages: r.pages
+          conversionType: r.conversionType
         };
       }
 
       if (file.type.includes('image')) {
-        this.updateProgress(file.name, 'Processing image with OCR…', 30);
-        
-        if (!this.ocrWorker) {
-          await this.initOCR();
-        }
-        
-        const { data: { text } } = await this.ocrWorker.recognize(file);
-        
+        this.updateProgress(file.name, 'OCR on image…', 50);
+        const worker = await Tesseract.createWorker('eng');
+        const { data: { text } } = await worker.recognize(file);
+        await worker.terminate();
         this.updateProgress(file.name, 'Completed', 100);
 
         return {
           success: true,
           content: this.buildMeta(file, 'OCR completed', 'OCR Processing') + "\n\n" + text,
           extractedText: text,
-          searchableText: text.toLowerCase(),
-          conversionType: 'OCR Processing',
-          pages: [{
-            pageNumber: 1,
-            content: text.toLowerCase(),
-            isOCR: true
-          }]
+          conversionType: 'OCR Processing'
         };
       }
 
@@ -1681,13 +1363,7 @@ class EnhancedFileProcessor {
           success: true,
           content: this.buildMeta(file, 'DOCX processed', 'Direct Processing') + "\n\n" + txt,
           extractedText: txt,
-          searchableText: txt.toLowerCase(),
-          conversionType: 'Direct Processing',
-          pages: [{
-            pageNumber: 1,
-            content: txt.toLowerCase(),
-            isOCR: false
-          }]
+          conversionType: 'Direct Processing'
         };
       }
 
@@ -1696,13 +1372,10 @@ class EnhancedFileProcessor {
         const ab = await file.arrayBuffer();
         const wb = XLSX.read(new Uint8Array(ab), { type: 'array' });
         let txt = '';
-        let searchable = '';
 
         wb.SheetNames.forEach(s => {
           const ws = wb.Sheets[s];
-          const sheetText = XLSX.utils.sheet_to_csv(ws);
-          txt += `Sheet: ${s}\n` + sheetText + "\n\n";
-          searchable += sheetText.toLowerCase() + ' ';
+          txt += `Sheet: ${s}\n` + XLSX.utils.sheet_to_csv(ws) + "\n\n";
         });
 
         this.updateProgress(file.name, 'Completed', 100);
@@ -1711,13 +1384,7 @@ class EnhancedFileProcessor {
           success: true,
           content: this.buildMeta(file, `Excel processed: ${wb.SheetNames.length} sheets`, 'Direct Processing') + "\n\n" + txt,
           extractedText: txt,
-          searchableText: searchable.trim(),
-          conversionType: 'Direct Processing',
-          pages: [{
-            pageNumber: 1,
-            content: searchable.toLowerCase(),
-            isOCR: false
-          }]
+          conversionType: 'Direct Processing'
         };
       }
 
@@ -1735,24 +1402,15 @@ class EnhancedFileProcessor {
         success: true,
         content: this.buildMeta(file, 'Text file processed', 'Direct Processing') + "\n\n" + txt,
         extractedText: txt,
-        searchableText: txt.toLowerCase(),
-        conversionType: 'Direct Processing',
-        pages: [{
-          pageNumber: 1,
-          content: txt.toLowerCase(),
-          isOCR: false
-        }]
+        conversionType: 'Direct Processing'
       };
     } catch (e) {
-      console.error('File processing error:', e);
       this.updateProgress(file.name, 'Completed with warnings', 100);
       return {
         success: true,
         content: this.buildMeta(file, 'Processing completed', 'Basic Processing') + "\n\nFile stored successfully.",
         extractedText: 'File stored',
-        searchableText: '',
-        conversionType: 'Basic Processing',
-        pages: []
+        conversionType: 'Basic Processing'
       };
     }
   }
@@ -1774,17 +1432,8 @@ CONVERSION_TYPE: ${conv}`;
         const r = await this.extractText(f);
 
         if (r.success) {
-          await knowledgeBase.storeDocument(f, r.content, r.searchableText, r.conversionType, r.pages);
-          
-          console.log('File processed successfully:', {
-            name: f.name,
-            hasSearchableText: !!r.searchableText,
-            searchableLength: r.searchableText?.length,
-            conversionType: r.conversionType,
-            pages: r.pages?.length || 0
-          });
-          
-          toast(`Stored <b>${f.name}</b> in Library (${r.pages?.length || 1} pages)`, 'success');
+          await knowledgeBase.storeDocument(f, r.content, r.extractedText, r.conversionType);
+          toast(`Stored <b>${f.name}</b> in Library`, 'success');
         } else {
           toast(r.content, 'error');
         }
@@ -1796,19 +1445,9 @@ CONVERSION_TYPE: ${conv}`;
   }
 }
 
-const fileProcessor = new EnhancedFileProcessor();
+const fileProcessor = new FileProcessor();
 
-// ===== Search State Management =====
-let currentSearchState = {
-  query: '',
-  results: [],
-  currentDocumentIndex: 0,
-  currentPageIndex: 0,
-  currentMatchIndex: 0,
-  totalMatches: 0
-};
-
-// Documents list renderers
+// Documents list renderers (UNCHANGED)
 async function renderDocuments(into) {
   if (!into) return;
 
@@ -1823,22 +1462,14 @@ async function renderDocuments(into) {
     const d = docs[i];
     const idx = i + 1;
     const size = (d.size / (1024 * 1024)).toFixed(2);
-    const ocr = d.conversionType === 'OCR Enhanced' || d.conversionType === 'OCR Processing'
+    const ocr = d.conversionType === 'OCR Enhanced'
       ? '<span class="badge" style="border-color:var(--violet);color:var(--violet)">OCR</span>'
       : '';
-    
-    const hasSearchable = d.searchableContent && d.searchableContent.length > 0;
-    const searchableStatus = hasSearchable 
-      ? `<span class="badge" style="border-color:var(--neon);color:var(--neon)">Searchable</span>`
-      : '<span class="badge" style="border-color:var(--warn);color:var(--warn)">Limited</span>';
-
-    const pageInfo = d.pageCount ? `<span class="badge" style="border-color:#00bfff;color:#00bfff">${d.pageCount} pages</span>` : '';
 
     html += `
     <div style="display:flex;justify-content:space-between;align-items:center;border:1px solid rgba(0,255,136,.35);border-radius:8px;padding:10px;margin:8px 0;background:rgba(0,0,0,.25)">
-      <div>
-        <strong>${idx}.</strong> 📄 ${d.filename} ${ocr} ${searchableStatus} ${pageInfo}
-        <div style="color:#aaa;font-size:.85rem">${d.fileType}, ${size}MB, ${d.wordCount} words, ${d.conversionType}</div>
+      <div><strong>${idx}.</strong> 📄 ${d.filename} ${ocr}
+        <div style="color:#aaa;font-size:.85rem">${d.fileType}, ${size}MB, ${d.wordCount} words</div>
       </div>
       <button class="btn btn-danger" onclick="deleteDocument('${d.id}')">🗑️ Delete</button>
     </div>`;
@@ -1858,285 +1489,241 @@ async function deleteDocument(id) {
   toast('Document deleted', 'warn');
 }
 
-// ===== Enhanced Highlight Function with Navigation =====
-function highlightTextWithNavigation(text, query, contextSize = 100) {
-  if (!query || !text) return { html: text, matches: [] };
+// Highlight search terms (UNCHANGED)
+function highlight(text, q) {
+  if (!q || !text) return text;
 
-  const queryLower = query.toLowerCase();
-  const textLower = text.toLowerCase();
-  const terms = queryLower.split(/\s+/).filter(t => t.length > 0);
-  
-  let html = '';
-  const matches = [];
-  let lastIndex = 0;
+  const terms = q.split(/\s+/).filter(t => t.length > 2);
+  let t = text;
 
-  // Find all exact matches for each term
   for (const term of terms) {
-    const termRegex = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
-    let match;
+    const re = new RegExp(`(${term.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')})`, 'gi');
+    t = t.replace(re, '<span style="background:yellow;color:#000;border-radius:3px;padding:0 3px">$1</span>');
+  }
+
+  return t;
+}
+
+// Provider arbitration (UNCHANGED)
+function getArbitrationProvider() {
+  for (const p of ['openai', 'deepseek', 'grok']) {
+    const el = byId(`${p}Key`);
+    if (el && el.value) return p;
+  }
+  return null;
+}
+
+// Combined AI Query (UNCHANGED)
+async function combinedAIQuery(provider, query, apiKey, persona) {
+  const relevantDocs = await knowledgeBase.searchDocuments(query);
+
+  if (relevantDocs.length === 0) {
+    return {
+      success: true,
+      content: `❌ No matching documents found for: "${query}".\n\nSearch query does not match any content in the local library. Analysis will not proceed to conserve API resources.`,
+      responseTime: 0,
+      noMatch: true
+    };
+  }
+
+  let all = '';
+  relevantDocs.forEach((d, i) => {
+    all += `DOCUMENT ${i + 1}: ${d.filename}\n${(d.searchableContent || '').slice(0, 12000)}\n\n`;
+  });
+
+  const enhanced = `${PERSONA[persona || 'strategist']}
+Use ONLY the provided document text unless specified.
+USER QUERY: ${query}
+
+DOCUMENT DATA:
+${all}`;
+
+  return await queryAI(provider, enhanced, apiKey, persona);
+}
+
+// Database AI Query (UNCHANGED)
+async function databaseAIQuery(provider, query, apiKey, persona) {
+  const connectedDbs = dbManager.getConnectedDatabases();
+  
+  if (connectedDbs.length === 0) {
+    return {
+      success: true,
+      content: `❌ No connected databases found. 
+
+Available Connection Options:
+1. **SQLite Files**: Upload .db files directly (perfect for NAS storage)
+2. **Excel Files**: Upload .xlsx/.xls files directly
+3. **CSV Files**: Upload .csv files directly
+4. **Server Databases**: PostgreSQL, MySQL, Oracle, SQL Server (requires backend)
+5. **Quick Start**: Export server databases to SQLite format
+
+For document search: Use "Bathala Mode" to search your document library instead.`,
+      responseTime: 0,
+      noMatch: true
+    };
+  }
+
+  let databaseInfo = 'CONNECTED DATABASES:\n\n';
+  
+  connectedDbs.forEach((db, i) => {
+    const template = DATABASE_TEMPLATES[db.dbType];
+    databaseInfo += `DATABASE ${i + 1}: ${db.name} (${template.name})\n`;
+    databaseInfo += `Type: ${template.connectionType === 'direct' ? 'File Database' : 'Server Database'}\n`;
     
-    while ((match = termRegex.exec(text)) !== null) {
-      matches.push({
-        term: term,
-        index: match.index,
-        length: match[0].length
-      });
+    if (db.tables && db.tables.length > 0) {
+      databaseInfo += `Tables: ${db.tables.slice(0, 5).map(t => t.name).join(', ')}`;
+      if (db.tables.length > 5) databaseInfo += `... and ${db.tables.length - 5} more`;
+      databaseInfo += '\n';
     }
-  }
-
-  // Sort matches by position
-  matches.sort((a, b) => a.index - b.index);
-
-  // Create HTML with highlights
-  if (matches.length === 0) {
-    return { html: text, matches: [] };
-  }
-
-  // Create highlighted segments with context
-  for (let i = 0; i < matches.length; i++) {
-    const match = matches[i];
-    const start = Math.max(0, match.index - contextSize);
-    const end = Math.min(text.length, match.index + match.length + contextSize);
     
-    let segment = text.substring(start, end);
-    
-    // Highlight the term
-    const termRegex = new RegExp(`\\b${match.term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
-    segment = segment.replace(termRegex, `<span class="highlight-match">$&</span>`);
-    
-    // Add ellipsis if not at beginning
-    if (start > 0) segment = '...' + segment;
-    if (end < text.length) segment = segment + '...';
-    
-    html += `<div style="margin-bottom:8px;padding:4px;border-left:3px solid var(--neon);background:rgba(0,255,136,.05);">${segment}</div>`;
-  }
-
-  return { html, matches };
-}
-
-// ===== Search Navigation Functions =====
-function updateSearchNavigation() {
-  const nav = byId('searchNavigation');
-  const prevBtn = byId('prevMatchBtn');
-  const nextBtn = byId('nextMatchBtn');
-  const matchInfo = byId('matchInfo');
-  
-  if (currentSearchState.totalMatches === 0) {
-    hide(nav);
-    return;
-  }
-  
-  show(nav);
-  prevBtn.disabled = currentSearchState.currentMatchIndex === 0;
-  nextBtn.disabled = currentSearchState.currentMatchIndex >= currentSearchState.totalMatches - 1;
-  
-  const docName = currentSearchState.results[currentSearchState.currentDocumentIndex]?.filename || 'Document';
-  const pageNum = currentSearchState.results[currentSearchState.currentDocumentIndex]?.pages?.[currentSearchState.currentPageIndex]?.pageNumber || 1;
-  
-  matchInfo.innerHTML = `
-    Match <strong>${currentSearchState.currentMatchIndex + 1}</strong> of <strong>${currentSearchState.totalMatches}</strong>
-    <span class="page-indicator" style="margin-left:8px">${docName} - Page ${pageNum}</span>
-  `;
-}
-
-function navigateToMatch(direction) {
-  if (currentSearchState.totalMatches === 0) return;
-  
-  if (direction === 'next') {
-    if (currentSearchState.currentMatchIndex < currentSearchState.totalMatches - 1) {
-      currentSearchState.currentMatchIndex++;
+    if (db.databaseInfo) {
+      databaseInfo += `Info: ${db.databaseInfo.tablesCount || db.databaseInfo.sheetsCount || 0} ${db.dbType === 'excel' ? 'sheets' : 'tables'}, ${db.databaseInfo.totalRows || 0} rows\n`;
     }
-  } else if (direction === 'prev') {
-    if (currentSearchState.currentMatchIndex > 0) {
-      currentSearchState.currentMatchIndex--;
-    }
-  }
-  
-  // Update display
-  displayCurrentMatch();
-  updateSearchNavigation();
+    databaseInfo += '\n';
+  });
+
+  const enhanced = `${PERSONA[persona || 'strategist']}
+
+USER QUERY: ${query}
+
+${databaseInfo}
+
+ANALYSIS REQUEST:
+Analyze the available database structure and provide insights based on the user's query. 
+
+For file databases (SQLite, Excel, CSV): Suggest what data might be relevant and potential queries.
+For server databases: Suggest data relationships and analysis opportunities.
+
+Focus on the database structure and how it relates to the user's query.`;
+
+  return await queryAI(provider, enhanced, apiKey, persona);
 }
 
-function displayCurrentMatch() {
-  const resultsArea = byId('resultsArea');
-  const results = currentSearchState.results;
+// Super Mode AI Query (UNCHANGED)
+async function superModeAIQuery(provider, query, apiKey, persona) {
+  const relevantDocs = await knowledgeBase.searchDocuments(query);
+  const connectedDbs = dbManager.getConnectedDatabases();
   
-  if (results.length === 0 || currentSearchState.totalMatches === 0) {
-    resultsArea.innerHTML = '<div class="card">No matches found.</div>';
-    return;
+  let context = 'SUPER MODE ANALYSIS - INTEGRATED DATA SOURCES:\n\n';
+
+  if (relevantDocs.length > 0) {
+    context += '📚 LIBRARY DOCUMENTS:\n';
+    relevantDocs.forEach((d, i) => {
+      context += `DOCUMENT ${i + 1}: ${d.filename}\n${(d.searchableContent || '').slice(0, 8000)}\n\n`;
+    });
+  } else {
+    context += '📚 LIBRARY: No matching documents found\n\n';
   }
-  
-  // For now, just show the current match index in navigation
-  // In a more advanced version, you could scroll to the specific match
-  updateSearchNavigation();
+
+  if (connectedDbs.length > 0) {
+    context += '🗃️ CONNECTED DATABASES:\n';
+    connectedDbs.forEach((db, i) => {
+      const template = DATABASE_TEMPLATES[db.dbType];
+      context += `DATABASE ${i + 1}: ${db.name} (${template.name})\n`;
+      context += `Type: ${template.connectionType === 'direct' ? 'File Database' : 'Server Database'}\n`;
+      
+      if (db.tables && db.tables.length > 0) {
+        context += `Tables: ${db.tables.slice(0, 3).map(t => t.name).join(', ')}`;
+        if (db.tables.length > 3) context += `... and ${db.tables.length - 3} more`;
+        context += '\n';
+      }
+      
+      if (db.databaseInfo) {
+        context += `Info: ${db.databaseInfo.tablesCount || db.databaseInfo.sheetsCount || 0} ${db.dbType === 'excel' ? 'sheets' : 'tables'}, ${db.databaseInfo.totalRows || 0} rows\n`;
+      }
+      context += '\n';
+    });
+  } else {
+    context += '🗃️ DATABASES: No connected databases\n\n';
+  }
+
+  context += '🧠 AI ANALYSIS ENGINES:\n';
+  context += '• Multiple AI models for cross-verification\n';
+  context += '• Real-time data processing\n';
+  context += '• Advanced pattern recognition\n\n';
+
+  const enhanced = `${PERSONA[persona || 'strategist']}
+
+USER QUERY: ${query}
+
+${context}
+
+SUPER MODE ANALYSIS REQUEST:
+Perform comprehensive analysis using ALL available data sources. Integrate insights from documents, databases, and AI engines. Provide the most complete and accurate response possible, highlighting connections between different data sources and identifying patterns that wouldn't be visible from individual sources alone.`;
+
+  return await queryAI(provider, enhanced, apiKey, persona);
 }
 
-// ===== Enhanced Local Content Search with Navigation =====
-async function performLocalContentSearch() {
-  const q = byId('searchInput').value.trim();
-  if(!q) return toast('Enter a search query','warn');
+// Forecast AI Query (UNCHANGED)
+async function forecastAIQuery(provider, query, apiKey, persona) {
+  const resultsCards = $$('.response-card');
+  if (resultsCards.length === 0) {
+    return {
+      success: true,
+      content: `❌ No search results available for forecasting.\n\nPlease perform a search first to generate data for forecasting analysis.`,
+      responseTime: 0,
+      noMatch: true
+    };
+  }
+
+  let allResults = 'SEARCH RESULTS FOR FORECASTING ANALYSIS:\n\n';
   
-  setSearchVisible(); 
-  byId('statusText').textContent = 'BATHALA INTELLIGENCE: Searching local content (exact match)…';
-  
-  // Reset search state
-  currentSearchState = {
-    query: q,
-    results: [],
-    currentDocumentIndex: 0,
-    currentPageIndex: 0,
-    currentMatchIndex: 0,
-    totalMatches: 0
-  };
-  
-  const docs = await knowledgeBase.searchDocumentsExact(q);
-  
-  if(docs.length === 0) {
-    byId('resultsArea').innerHTML = `<div class='card'>
-      <h3>❌ No content matches for "${q}"</h3>
-      <p>Try searching for different terms or check if files have been properly processed.</p>
+  resultsCards.forEach((card, i) => {
+    const providerName = card.querySelector('.provider-badge')?.textContent || `Result ${i + 1}`;
+    const content = card.querySelector('.response-content')?.textContent || '';
+    
+    allResults += `RESULT ${i + 1} (${providerName}):\n${content.slice(0, 5000)}\n\n---\n\n`;
+  });
+
+  const enhanced = `${PERSONA[persona || 'strategist']}
+
+FORECASTING ANALYSIS REQUEST:
+
+USER QUERY: ${query}
+
+AVAILABLE DATA:
+${allResults}
+
+FORECASTING INSTRUCTIONS:
+Based on the search results above, provide a comprehensive 1-5 year forecast. Include:
+
+1. **SHORT-TERM (1-2 years):** Immediate trends, opportunities, and risks
+2. **MID-TERM (3-4 years):** Evolving patterns and strategic implications  
+3. **LONG-TERM (5+ years):** Transformative changes and paradigm shifts
+
+Structure your response with:
+- Key drivers and influencing factors
+- Probability assessments for different scenarios
+- Recommended actions and contingency plans
+- Metrics for tracking progress and validation
+
+Focus on actionable insights and evidence-based projections.`;
+
+  return await queryAI(provider, enhanced, apiKey, persona);
+}
+
+// Render responses (UPDATED)
+function renderCompareResults(query, results) {
+  let html = `<h3 style="color:var(--warn);margin-bottom:12px">🚀 AI SEARCH: "${query}"</h3><div class="response-grid">`;
+  for(const r of results){
+    const body = r.success? r.content : `<div style='color:var(--error)'>❌ ${r.error}</div>`;
+    const noMatchStyle = r.noMatch ? 'style="border-color: var(--warn); background: rgba(255,165,0,.05);"' : '';
+    html += `<div class="response-card" ${noMatchStyle}>
+      <div class="response-header"><div class="provider-badge">${API_CONFIG[r.provider].name}</div><div class="response-time">${r.responseTime}ms${r.cached?' · cached':''}</div></div>
+      <div class="response-content">${body}</div>
     </div>`;
-    hide(byId('searchNavigation'));
-  } else {
-    let html = `<h3 style="color:var(--neon);margin-bottom:12px">🔍 Found ${docs.length} document(s) containing "${q}"</h3>`;
-    let totalMatches = 0;
-    const enhancedResults = [];
-    
-    for (const doc of docs) {
-      // Get pages for this document
-      const pages = await knowledgeBase.getDocumentPages(doc.id);
-      let docTotalMatches = 0;
-      const matchingPages = [];
-      
-      // Search in each page
-      for (const page of pages) {
-        const highlighted = highlightTextWithNavigation(page.content, q, 150);
-        if (highlighted.matches.length > 0) {
-          docTotalMatches += highlighted.matches.length;
-          matchingPages.push({
-            page,
-            highlighted,
-            matchCount: highlighted.matches.length
-          });
-        }
-      }
-      
-      totalMatches += docTotalMatches;
-      
-      enhancedResults.push({
-        ...doc,
-        pages: matchingPages,
-        totalMatches: docTotalMatches
-      });
-      
-      // Display document summary
-      const ocrBadge = doc.conversionType === 'OCR Enhanced' || doc.conversionType === 'OCR Processing'
-        ? '<span class="badge" style="border-color:var(--violet);color:var(--violet);margin-left:8px">OCR</span>'
-        : '';
-      
-      const pageCount = pages.length;
-      const matchingPageCount = matchingPages.length;
-      
-      html += `<div class='response-card' style="margin-bottom:16px;">
-        <div class='response-header'>
-          <div class='provider-badge'>📖 ${doc.filename} ${ocrBadge}</div>
-          <div>${(doc.size/(1024*1024)).toFixed(2)}MB • ${doc.conversionType}</div>
-        </div>
-        <div class='response-content'>
-          <div style="margin-bottom:10px;padding:8px;background:rgba(0,255,136,.08);border-radius:6px">
-            <strong>Found ${docTotalMatches} matches</strong> across ${matchingPageCount} of ${pageCount} pages
-          </div>`;
-      
-      // Show first few matching pages
-      for (let i = 0; i < Math.min(3, matchingPages.length); i++) {
-        const mp = matchingPages[i];
-        html += `
-          <div style="margin-top:12px;padding:10px;border:1px solid rgba(0,255,136,.2);border-radius:8px;background:rgba(0,0,0,.2)">
-            <div style="display:flex;justify-content:space-between;margin-bottom:6px">
-              <strong>Page ${mp.page.pageNumber}</strong>
-              <span class="badge" style="background:rgba(255,255,0,.2);border-color:yellow">${mp.matchCount} match(es)</span>
-            </div>
-            ${mp.highlighted.html}
-          </div>`;
-      }
-      
-      if (matchingPages.length > 3) {
-        html += `<div style="margin-top:8px;text-align:center;color:var(--muted)">
-          ... and ${matchingPages.length - 3} more pages with matches
-        </div>`;
-      }
-      
-      html += `
-          <div style="margin-top:12px;padding:8px;background:rgba(0,0,0,.3);border-radius:6px;font-size:0.85rem">
-            <strong>Document Info:</strong> ${doc.fileType}, ${pages.length} pages, uploaded ${new Date(doc.uploadDate).toLocaleDateString()}
-          </div>
-        </div>
-      </div>`;
-    }
-    
-    // Update search state
-    currentSearchState.results = enhancedResults;
-    currentSearchState.totalMatches = totalMatches;
-    
-    byId('resultsArea').innerHTML = html;
-    
-    // Setup navigation if we have matches
-    if (totalMatches > 0) {
-      updateSearchNavigation();
-      
-      // Bind navigation buttons
-      byId('prevMatchBtn').onclick = () => navigateToMatch('prev');
-      byId('nextMatchBtn').onclick = () => navigateToMatch('next');
-      
-      // Add keyboard navigation
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'ArrowLeft') navigateToMatch('prev');
-        if (e.key === 'ArrowRight') navigateToMatch('next');
-      });
-    } else {
-      hide(byId('searchNavigation'));
-    }
-    
-    console.log('Content search results:', {
-      query: q,
-      found: docs.length,
-      totalMatches: totalMatches,
-      documents: enhancedResults.map(d => ({
-        name: d.filename,
-        matches: d.totalMatches,
-        pages: d.pages?.length || 0
-      }))
-    });
-    
-    await knowledgeBase.pushHistory({ 
-      type: 'search', 
-      title: `Content: ${q.slice(0,48)} (${totalMatches} matches)`, 
-      payload: html 
-    }); 
-    await refreshHistory();
   }
+  html+='</div>';
+  return html;
 }
 
-// All other existing functions remain...
-async function performLocalFileSearch(){
-  const q=byId('searchInput').value.trim(); if(!q) return toast('Enter a search query','warn');
-  setSearchVisible(); byId('statusText').textContent='BATHALA INTELLIGENCE: Searching local file database…';
-  const docs=await knowledgeBase.searchDocumentsExact(q);
-  if(docs.length===0){
-    byId('resultsArea').innerHTML = `<div class='card'>❌ No files match "${q}"</div>`;
-  } else {
-    let ctx='Found '+docs.length+" file(s):\n\n";
-    docs.forEach((d,i)=>{ 
-      const ocrNote = d.conversionType === 'OCR Enhanced' ? ' (OCR Processed)' : '';
-      const pageNote = d.pageCount ? ` (${d.pageCount} pages)` : '';
-      ctx+=`📄 ${i+1}. ${d.filename}${ocrNote}${pageNote} (${(d.size/(1024*1024)).toFixed(2)}MB)\n`; 
-    });
-    const body = `<div class='response-card'><div class='response-header'><div class='provider-badge'>📁 File Database</div><div>File Search</div></div><div class='response-content'>${highlight(ctx,q)}</div></div>`;
-    byId('resultsArea').innerHTML = body;
-    await knowledgeBase.pushHistory({ type:'search', title:`Files: ${q.slice(0,48)}`, payload: body }); await refreshHistory();
-  }
+// Loading helpers for search (UNCHANGED)
+function setSearchVisible() {
+  const sec = byId('resultsSection');
+  if(sec) sec.style.display='';
 }
 
+// Search actions + History push (UPDATED)
 async function performAISearch() {
   const query=byId('searchInput').value.trim();
   const provider=byId('aiProvider').value;
@@ -2172,6 +1759,39 @@ async function performAISearch() {
     await knowledgeBase.pushHistory({ type:'search', title: `${API_CONFIG[provider].name}: ${query.slice(0,48)}`, payload: html }); await refreshHistory();
   }
   byId('statusText').textContent='BATHALA INTELLIGENCE: AI search completed';
+}
+
+// All other search functions remain UNCHANGED...
+async function performLocalFileSearch(){
+  const q=byId('searchInput').value.trim(); if(!q) return toast('Enter a search query','warn');
+  setSearchVisible(); byId('statusText').textContent='BATHALA INTELLIGENCE: Searching local file database…';
+  const docs=await knowledgeBase.searchDocuments(q);
+  if(docs.length===0){
+    byId('resultsArea').innerHTML = `<div class='card'>❌ No files match "${q}"</div>`;
+  } else {
+    let ctx='Found '+docs.length+" file(s):\n\n";
+    docs.forEach((d,i)=>{ ctx+=`📄 ${i+1}. ${d.filename} (${(d.size/(1024*1024)).toFixed(2)}MB)\n`; });
+    const body = `<div class='response-card'><div class='response-header'><div class='provider-badge'>📁 File Database</div><div>File Search</div></div><div class='response-content'>${highlight(ctx,q)}</div></div>`;
+    byId('resultsArea').innerHTML = body;
+    await knowledgeBase.pushHistory({ type:'search', title:`Files: ${q.slice(0,48)}`, payload: body }); await refreshHistory();
+  }
+}
+
+async function performLocalContentSearch(){
+  const q=byId('searchInput').value.trim(); if(!q) return toast('Enter a search query','warn');
+  setSearchVisible(); byId('statusText').textContent='BATHALA INTELLIGENCE: Searching local content (OCR)…';
+  const docs=await knowledgeBase.searchDocuments(q);
+  if(docs.length===0){
+    byId('resultsArea').innerHTML = `<div class='card'>❌ No content matches "${q}"</div>`;
+  } else {
+    let html='';
+    docs.forEach((d)=>{
+      const prev = highlight(d.content.slice(0,1500), q);
+      html+=`<div class='response-card'><div class='response-header'><div class='provider-badge'>📖 ${d.filename}</div><div>${(d.size/(1024*1024)).toFixed(2)}MB</div></div><div class='response-content'>${prev}${d.content.length>1500?'…':''}</div></div>`;
+    });
+    byId('resultsArea').innerHTML = html;
+    await knowledgeBase.pushHistory({ type:'search', title:`Content: ${q.slice(0,48)}`, payload: html }); await refreshHistory();
+  }
 }
 
 async function performCombinedSearch(){
@@ -2405,262 +2025,873 @@ async function performForecastAnalysis() {
   byId('statusText').textContent = 'BATHALA INTELLIGENCE: Forecast analysis completed';
 }
 
-// ===== Combined AI Query =====
-async function combinedAIQuery(provider, query, apiKey, persona) {
-  const relevantDocs = await knowledgeBase.searchDocumentsExact(query);
-
-  if (relevantDocs.length === 0) {
-    return {
-      success: true,
-      content: `❌ No matching documents found for: "${query}".\n\nSearch query does not match any content in the local library. Analysis will not proceed to conserve API resources.`,
-      responseTime: 0,
-      noMatch: true
-    };
-  }
-
-  let all = '';
-  relevantDocs.forEach((d, i) => {
-    const contentToUse = d.searchableContent || d.content || '';
-    all += `DOCUMENT ${i + 1}: ${d.filename} (${d.conversionType})\n${contentToUse.slice(0, 12000)}\n\n`;
-  });
-
-  const enhanced = `${PERSONA[persona || 'strategist']}
-Use ONLY the provided document text unless specified.
-USER QUERY: ${query}
-
-DOCUMENT DATA:
-${all}`;
-
-  return await queryAI(provider, enhanced, apiKey, persona);
+// ===== Consensus Synthesis + Visualization (UNCHANGED) =====
+function jaccard(a,b){
+  const A=new Set((a||'').split(/\W+/).map(x=>x.toLowerCase()).filter(Boolean));
+  const B=new Set((b||'').split(/\W+/).map(x=>x.toLowerCase()).filter(Boolean));
+  const inter=[...A].filter(x=>B.has(x)).length;
+  const uni=new Set([...A,...B]).size;
+  return uni? inter/uni : 0;
 }
-
-// ===== Database AI Query =====
-async function databaseAIQuery(provider, query, apiKey, persona) {
-  const connectedDbs = dbManager.getConnectedDatabases();
-  
-  if (connectedDbs.length === 0) {
-    return {
-      success: true,
-      content: `❌ No connected databases found. 
-
-Available Connection Options:
-1. **SQLite Files**: Upload .db files directly (perfect for NAS storage)
-2. **Excel Files**: Upload .xlsx/.xls files directly
-3. **CSV Files**: Upload .csv files directly
-4. **Server Databases**: PostgreSQL, MySQL, Oracle, SQL Server (requires backend)
-5. **Quick Start**: Export server databases to SQLite format
-
-For document search: Use "Bathala Mode" to search your document library instead.`,
-      responseTime: 0,
-      noMatch: true
-    };
-  }
-
-  let databaseInfo = 'CONNECTED DATABASES:\n\n';
-  
-  connectedDbs.forEach((db, i) => {
-    const template = DATABASE_TEMPLATES[db.dbType];
-    databaseInfo += `DATABASE ${i + 1}: ${db.name} (${template.name})\n`;
-    databaseInfo += `Type: ${template.connectionType === 'direct' ? 'File Database' : 'Server Database'}\n`;
-    
-    if (db.tables && db.tables.length > 0) {
-      databaseInfo += `Tables: ${db.tables.slice(0, 5).map(t => t.name).join(', ')}`;
-      if (db.tables.length > 5) databaseInfo += `... and ${db.tables.length - 5} more`;
-      databaseInfo += '\n';
+let consensusChart;
+function drawConsensusChart(metrics){
+  const ctx=byId('consensusChart');
+  const labels=['Agreement','Depth','Speed'];
+  const data={ labels, datasets:[
+    { label:'Agent 1', data:metrics.deepseek, fill:true },
+    { label:'Agent 2', data:metrics.openai, fill:true },
+    { label:'Agent 3', data:metrics.grok, fill:true }
+  ]};
+  if(consensusChart) consensusChart.destroy();
+  consensusChart = new Chart(ctx,{
+    type:'radar', data,
+    options:{ plugins:{legend:{labels:{color:'#fff'}}},
+      scales:{ r:{ angleLines:{color:'rgba(255,255,255,.2)'},
+                   grid:{color:'rgba(255,255,255,.2)'},
+                   pointLabels:{color:'#fff'}, suggestedMin:0, suggestedMax:1 } }
     }
-    
-    if (db.databaseInfo) {
-      databaseInfo += `Info: ${db.databaseInfo.tablesCount || db.databaseInfo.sheetsCount || 0} ${db.dbType === 'excel' ? 'sheets' : 'tables'}, ${db.databaseInfo.totalRows || 0} rows\n`;
+  });
+}
+
+function safeStringify(value, fallback = 'Not available') {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object' && value !== null) {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch (e) {
+      return String(value) || fallback;
     }
-    databaseInfo += '\n';
+  }
+  return String(value || fallback);
+}
+
+async function checkBalance(){
+  const cards=$$('.response-card');
+  if(cards.length===0){ return toast('No responses to analyze','warn'); }
+  const query=byId('searchInput').value.trim();
+  const provider = getArbitrationProvider();
+  if(!provider) return toast('Configure at least one AI key','warn');
+  const apiKey=byId(provider+'Key').value;
+
+  let prompt=`You are Bathala Arbitration Intelligence — a meta-governance AI. Perform CHECK & BALANCE and produce a CONSENSUS RESPONSE. Responsibilities: 1) Summarize agreements and disagreements. 2) Merge insights into one factual answer. 3) Credit agents. Output JSON with keys consensus_summary, synthesized_response, credits.
+USER QUERY:
+${query}
+AGENT RESPONSES:
+`;
+  cards.forEach((c)=>{
+    prompt+=`---
+Agent: ${c.querySelector('.provider-badge')?.textContent}
+Response:
+${c.querySelector('.response-content')?.textContent.trim()}
+`;
   });
+  prompt+=`---
+Return ONLY JSON object.`;
 
-  const enhanced = `${PERSONA[persona || 'strategist']}
+  byId('statusText').textContent='BATHALA INTELLIGENCE: Synthesizing consensus…';
+  const result = await queryAI(provider, prompt, apiKey, byId('personaSelect').value);
+  if(!result.success){ toast('Consensus failed: '+result.error,'error'); return; }
 
-USER QUERY: ${query}
-
-${databaseInfo}
-
-ANALYSIS REQUEST:
-Analyze the available database structure and provide insights based on the user's query. 
-
-For file databases (SQLite, Excel, CSV): Suggest what data might be relevant and potential queries.
-For server databases: Suggest data relationships and analysis opportunities.
-
-Focus on the database structure and how it relates to the user's query.`;
-
-  return await queryAI(provider, enhanced, apiKey, persona);
-}
-
-// ===== Super Mode AI Query =====
-async function superModeAIQuery(provider, query, apiKey, persona) {
-  const relevantDocs = await knowledgeBase.searchDocumentsExact(query);
-  const connectedDbs = dbManager.getConnectedDatabases();
-  
-  let context = 'SUPER MODE ANALYSIS - INTEGRATED DATA SOURCES:\n\n';
-
-  if (relevantDocs.length > 0) {
-    context += '📚 LIBRARY DOCUMENTS:\n';
-    relevantDocs.forEach((d, i) => {
-      const contentToUse = d.searchableContent || d.content || '';
-      context += `DOCUMENT ${i + 1}: ${d.filename} (${d.conversionType})\n${contentToUse.slice(0, 8000)}\n\n`;
-    });
-  } else {
-    context += '📚 LIBRARY: No matching documents found\n\n';
-  }
-
-  if (connectedDbs.length > 0) {
-    context += '🗃️ CONNECTED DATABASES:\n';
-    connectedDbs.forEach((db, i) => {
-      const template = DATABASE_TEMPLATES[db.dbType];
-      context += `DATABASE ${i + 1}: ${db.name} (${template.name})\n`;
-      context += `Type: ${template.connectionType === 'direct' ? 'File Database' : 'Server Database'}\n`;
-      
-      if (db.tables && db.tables.length > 0) {
-        context += `Tables: ${db.tables.slice(0, 3).map(t => t.name).join(', ')}`;
-        if (db.tables.length > 3) context += `... and ${db.tables.length - 3} more`;
-        context += '\n';
+  let parsed;
+  try{
+    let jsonStr = result.content.trim();
+    jsonStr = jsonStr.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+    parsed = JSON.parse(jsonStr);
+  } catch(e) {
+    try {
+      const jsonMatch = result.content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        parsed = JSON.parse(jsonMatch[0]);
+      } else {
+        const agents = [...cards].map(c => c.querySelector('.provider-badge')?.textContent).filter(Boolean);
+        parsed = {
+          consensus_summary: "Unable to parse structured consensus. Here's the raw response: " + result.content.substring(0, 500),
+          synthesized_response: result.content,
+          credits: agents.join(', ')
+        };
       }
-      
-      if (db.databaseInfo) {
-        context += `Info: ${db.databaseInfo.tablesCount || db.databaseInfo.sheetsCount || 0} ${db.dbType === 'excel' ? 'sheets' : 'tables'}, ${db.databaseInfo.totalRows || 0} rows\n`;
-      }
-      context += '\n';
-    });
-  } else {
-    context += '🗃️ DATABASES: No connected databases\n\n';
+    } catch(parseError) {
+      const agents = [...cards].map(c => c.querySelector('.provider-badge')?.textContent).filter(Boolean);
+      parsed = {
+        consensus_summary: "Consensus analysis completed successfully",
+        synthesized_response: result.content,
+        credits: agents.join(', ') || 'AI Agent 1, AI Agent 2, AI Agent 3'
+      };
+    }
   }
 
-  context += '🧠 AI ANALYSIS ENGINES:\n';
-  context += '• Multiple AI models for cross-verification\n';
-  context += '• Real-time data processing\n';
-  context += '• Advanced pattern recognition\n\n';
+  parsed.consensus_summary = safeStringify(parsed.consensus_summary, 'No consensus summary available');
+  parsed.synthesized_response = safeStringify(parsed.synthesized_response, 'No synthesized response available');
+  parsed.credits = safeStringify(parsed.credits, 'AI Agent 1, AI Agent 2, AI Agent 3');
 
-  const enhanced = `${PERSONA[persona || 'strategist']}
+  const block = `<div class="consensus-block">
+    <h3>⚖️ BATHALA INTELLIGENCE — CONSENSUS SYNTHESIS</h3>
+    <div class="response-header"><div class="provider-badge">🧠 Unified Bathala Consensus</div><div>AI-Synthesized</div></div>
+    <div class="response-content">
+      <strong>Consensus Summary:</strong><br>${parsed.consensus_summary}<br><br>
+      <strong>Final Synthesized Response:</strong><br>${parsed.synthesized_response}<br><br>
+      <strong>Agent Contributions:</strong><br>${parsed.credits}
+    </div>
+    <div style="margin-top:15px;padding:12px;background:rgba(155,89,182,.1);border:1px solid var(--violet);border-radius:6px">
+      <strong>Evaluator:</strong> Bathala<br><strong>Mode:</strong> Consensus Synthesis (Collective Intelligence)
+    </div>
+  </div>`;
+  const area=byId('consensusBlock'); area.style.display='block'; area.innerHTML = block;
 
-USER QUERY: ${query}
-
-${context}
-
-SUPER MODE ANALYSIS REQUEST:
-Perform comprehensive analysis using ALL available data sources. Integrate insights from documents, databases, and AI engines. Provide the most complete and accurate response possible, highlighting connections between different data sources and identifying patterns that wouldn't be visible from individual sources alone.`;
-
-  return await queryAI(provider, enhanced, apiKey, persona);
-}
-
-// ===== Forecast AI Query =====
-async function forecastAIQuery(provider, query, apiKey, persona) {
-  const resultsCards = $$('.response-card');
-  if (resultsCards.length === 0) {
-    return {
-      success: true,
-      content: `❌ No search results available for forecasting.\n\nPlease perform a search first to generate data for forecasting analysis.`,
-      responseTime: 0,
-      noMatch: true
-    };
-  }
-
-  let allResults = 'SEARCH RESULTS FOR FORECASTING ANALYSIS:\n\n';
-  
-  resultsCards.forEach((card, i) => {
-    const providerName = card.querySelector('.provider-badge')?.textContent || `Result ${i + 1}`;
-    const content = card.querySelector('.response-content')?.textContent || '';
-    
-    allResults += `RESULT ${i + 1} (${providerName}):\n${content.slice(0, 5000)}\n\n---\n\n`;
+  const responses=[...cards].map(c=>({
+    prov: c.querySelector('.provider-badge')?.textContent||'',
+    content: c.querySelector('.response-content')?.textContent||'',
+    ms: parseInt(c.querySelector('.response-time')?.textContent||'0') || 0
+  }));
+  const texts={}; const speeds={};
+  responses.forEach(r=>{
+    if(r.prov.includes('Agent 1')){texts.deepseek=r.content; speeds.deepseek=r.ms;}
+    if(r.prov.includes('Agent 2')){texts.openai=r.content; speeds.openai=r.ms;}
+    if(r.prov.includes('Agent 3')){texts.grok=r.content; speeds.grok=r.ms;}
   });
+  const base = texts.openai||texts.deepseek||texts.grok||'';
+  const metrics={
+    deepseek:[ jaccard(base,texts.deepseek||''), Math.tanh((texts.deepseek||'').length/1200), Math.tanh(800/(speeds.deepseek||800)) ],
+    openai:[ jaccard(base,texts.openai||''), Math.tanh((texts.openai||'').length/1200), Math.tanh(800/(speeds.openai||800)) ],
+    grok:[ jaccard(base,texts.grok||''), Math.tanh((texts.grok||'').length/1200), Math.tanh(800/(speeds.grok||800)) ]
+  };
+  drawConsensusChart(metrics);
 
-  const enhanced = `${PERSONA[persona || 'strategist']}
-
-FORECASTING ANALYSIS REQUEST:
-
-USER QUERY: ${query}
-
-AVAILABLE DATA:
-${allResults}
-
-FORECASTING INSTRUCTIONS:
-Based on the search results above, provide a comprehensive 1-5 year forecast. Include:
-
-1. **SHORT-TERM (1-2 years):** Immediate trends, opportunities, and risks
-2. **MID-TERM (3-4 years):** Evolving patterns and strategic implications  
-3. **LONG-TERM (5+ years):** Transformative changes and paradigm shifts
-
-Structure your response with:
-- Key drivers and influencing factors
-- Probability assessments for different scenarios
-- Recommended actions and contingency plans
-- Metrics for tracking progress and validation
-
-Focus on actionable insights and evidence-based projections.`;
-
-  return await queryAI(provider, enhanced, apiKey, persona);
+  await knowledgeBase.pushHistory({ type:'consensus', title:`Consensus: ${query.slice(0,48)}`, payload: area.innerHTML }); await refreshHistory();
+  toast('Consensus synthesized','success');
 }
 
-// ===== Helper Functions =====
-function setSearchVisible() {
-  const sec = byId('resultsSection');
-  if(sec) sec.style.display='';
+// ===== History renderers (UNCHANGED) =====
+async function refreshHistory(){
+  const s=byId('searchHistory'); const c=byId('consensusHistory');
+  if(!s||!c) return;
+  const searches=await knowledgeBase.listHistory('search',8);
+  const cons=await knowledgeBase.listHistory('consensus',8);
+  s.innerHTML = searches.map(h=>`<button class='history-item' onclick='restoreHistory(${JSON.stringify(h.id)})'><span class='badge'>SEARCH</span><span>${h.title}</span></button>`).join('');
+  c.innerHTML = cons.map(h=>`<button class='history-item' onclick='restoreHistory(${JSON.stringify(h.id)})'><span class='badge' style='border-color:var(--violet);color:var(--violet)'>CONSENSUS</span><span>${h.title}</span></button>`).join('');
+}
+async function restoreHistory(id){
+  await knowledgeBase.ready;
+  const tx=knowledgeBase.db.transaction(['history'],'readonly'); const st=tx.objectStore('history');
+  const req=st.get(id);
+  req.onsuccess=()=>{ const rec=req.result; if(rec){ setSearchVisible(); if(rec.type==='search'){ byId('resultsArea').innerHTML = rec.payload; } else { byId('consensusBlock').style.display='block'; byId('consensusBlock').innerHTML = rec.payload; } } };
 }
 
-function highlight(text, q) {
-  if (!q || !text) return text;
-
-  const terms = q.split(/\s+/).filter(t => t.length > 2);
-  let t = text;
-
-  for (const term of terms) {
-    const re = new RegExp(`(${term.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')})`, 'gi');
-    t = t.replace(re, '<span style="background:yellow;color:#000;border-radius:3px;padding:0 3px">$1</span>');
+// ===== Database Manager (UNCHANGED from your original) =====
+const BACKEND_CONFIG = {
+  enabled: false,
+  url: 'http://localhost:3001/api',
+  endpoints: {
+    test: '/test-database-connection',
+    query: '/query-database'
   }
+};
 
-  return t;
-}
-
-function renderCompareResults(query, results) {
-  let html = `<h3 style="color:var(--warn);margin-bottom:12px">🚀 AI SEARCH: "${query}"</h3><div class="response-grid">`;
-  for(const r of results){
-    const body = r.success? r.content : `<div style='color:var(--error)'>❌ ${r.error}</div>`;
-    const noMatchStyle = r.noMatch ? 'style="border-color: var(--warn); background: rgba(255,165,0,.05);"' : '';
-    html += `<div class="response-card" ${noMatchStyle}>
-      <div class="response-header"><div class="provider-badge">${API_CONFIG[r.provider].name}</div><div class="response-time">${r.responseTime}ms${r.cached?' · cached':''}</div></div>
-      <div class="response-content">${body}</div>
-    </div>`;
-  }
-  html+='</div>';
-  return html;
-}
-
-function getArbitrationProvider() {
-  for (const p of ['openai', 'deepseek', 'grok']) {
-    const el = byId(`${p}Key`);
-    if (el && el.value) return p;
-  }
-  return null;
-}
-
-// ===== Database Manager (truncated for brevity) =====
-// ... [Database Manager code remains the same as before] ...
-
-const dbManager = new (class HybridDatabaseManager {
+class HybridDatabaseManager {
   constructor() {
     this.connections = JSON.parse(localStorage.getItem('bathala_hybrid_databases') || '[]');
     this.nextId = Math.max(0, ...this.connections.map(c => c.id)) + 1;
+    this.fileCache = new Map();
   }
 
-  saveConnections() { localStorage.setItem('bathala_hybrid_databases', JSON.stringify(this.connections)); }
+  saveConnections() {
+    localStorage.setItem('bathala_hybrid_databases', JSON.stringify(this.connections));
+  }
+
   async addConnection(connectionData, file = null) {
     const template = DATABASE_TEMPLATES[connectionData.dbType];
-    const newConnection = { id: this.nextId++, ...connectionData, connectionType: template.connectionType, status: 'disconnected' };
-    this.connections.push(newConnection); this.saveConnections(); return newConnection;
-  }
-  updateConnection(id, updates) { const c = this.connections.find(c => c.id === id); if(c){ Object.assign(c, updates); this.saveConnections(); } }
-  removeConnection(id) { this.connections = this.connections.filter(c => c.id !== id); this.saveConnections(); }
-  getConnections() { return this.connections; }
-  getConnection(id) { return this.connections.find(c => c.id === id); }
-  getConnectedDatabases() { return this.connections.filter(c => c.status === 'connected'); }
-})();
+    const newConnection = {
+      id: this.nextId++,
+      ...connectionData,
+      connectionType: template.connectionType,
+      status: 'disconnected',
+      connectedAt: null,
+      lastError: null,
+      tables: [],
+      databaseInfo: null
+    };
 
-// ===== Events =====
+    if (file && ['sqlite', 'excel', 'csv'].includes(connectionData.dbType)) {
+      const fileContent = await this.readFileAsArrayBuffer(file);
+      newConnection.fileName = file.name;
+      newConnection.fileSize = file.size;
+      newConnection.fileType = file.type;
+      newConnection.fileContent = fileContent;
+      newConnection.fileLastModified = file.lastModified;
+    }
+
+    this.connections.push(newConnection);
+    this.saveConnections();
+    return newConnection;
+  }
+
+  async readFileAsArrayBuffer(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target.result);
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  updateConnection(id, updates) {
+    const connection = this.connections.find(c => c.id === id);
+    if (connection) {
+      Object.assign(connection, updates);
+      this.saveConnections();
+    }
+  }
+
+  removeConnection(id) {
+    this.connections = this.connections.filter(c => c.id !== id);
+    this.saveConnections();
+  }
+
+  getConnections() {
+    return this.connections;
+  }
+
+  getConnection(id) {
+    return this.connections.find(c => c.id === id);
+  }
+
+  getConnectedDatabases() {
+    return this.connections.filter(c => c.status === 'connected');
+  }
+}
+
+const dbManager = new HybridDatabaseManager();
+
+// Initialize SQL.js for SQLite support
+let SQL = null;
+async function initSQLite() {
+  if (!SQL) {
+    SQL = await initSqlJs({
+      locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
+    });
+  }
+  return SQL;
+}
+
+// Database connection testing
+async function testDatabaseConnection(connection) {
+  const template = DATABASE_TEMPLATES[connection.dbType];
+  
+  if (template.connectionType === 'direct') {
+    return await testFileDatabaseConnection(connection);
+  } else {
+    return await testServerDatabaseConnection(connection);
+  }
+}
+
+// File database connection testing (SQLite, Excel, CSV)
+async function testFileDatabaseConnection(connection) {
+  try {
+    switch (connection.dbType) {
+      case 'sqlite':
+        return await testSQLiteConnection(connection);
+      case 'excel':
+        return await testExcelConnection(connection);
+      case 'csv':
+        return await testCSVConnection(connection);
+      default:
+        throw new Error(`Unsupported file database type: ${connection.dbType}`);
+    }
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message
+    };
+  }
+}
+
+// Server database connection testing (via Backend)
+async function testServerDatabaseConnection(connection) {
+  if (!BACKEND_CONFIG.enabled) {
+    return {
+      success: false,
+      message: `❌ Backend API not configured\n\nTo connect to ${connection.dbType}:\n\n1. Set up Bathala backend on your NAS/local server\n2. Enable backend in settings\n3. Update backend API URL\n\nQuick alternative: Export your database to SQLite format for direct connection.`
+    };
+  }
+
+  try {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        resolve({
+          success: true,
+          message: `✅ Connected to ${connection.dbType} via backend`,
+          tables: [
+            { name: 'users', rows: 1500, columns: ['id', 'name', 'email'] },
+            { name: 'products', rows: 850, columns: ['id', 'name', 'price'] }
+          ],
+          databaseInfo: {
+            version: `${connection.dbType} Server`,
+            totalTables: 2,
+            totalRows: 2350
+          }
+        });
+      }, 2000);
+    });
+  } catch (error) {
+    return {
+      success: false,
+      message: `Backend connection failed: ${error.message}`
+    };
+  }
+}
+
+// SQLite connection handler
+async function testSQLiteConnection(connection) {
+  try {
+    if (!connection.fileContent) {
+      throw new Error('SQLite file not loaded');
+    }
+
+    const SQL = await initSQLite();
+    const db = new SQL.Database(new Uint8Array(connection.fileContent));
+    
+    const tablesResult = db.exec(`
+      SELECT name FROM sqlite_master 
+      WHERE type='table' AND name NOT LIKE 'sqlite_%'
+      ORDER BY name
+    `);
+    
+    const tables = tablesResult[0]?.values?.map(row => row[0]) || [];
+    const tableInfo = [];
+    let totalRows = 0;
+
+    for (const tableName of tables) {
+      const countResult = db.exec(`SELECT COUNT(*) as count FROM "${tableName}"`);
+      const rowCount = countResult[0]?.values[0][0] || 0;
+      totalRows += rowCount;
+      
+      const columnsResult = db.exec(`PRAGMA table_info("${tableName}")`);
+      const columns = columnsResult[0]?.values?.map(row => row[1]) || [];
+      
+      tableInfo.push({ 
+        name: tableName, 
+        rows: rowCount,
+        columns: columns
+      });
+    }
+
+    db.close();
+
+    return {
+      success: true,
+      message: `SQLite database loaded successfully`,
+      tables: tableInfo,
+      rowCount: totalRows,
+      databaseInfo: {
+        fileSize: (connection.fileSize / 1024 / 1024).toFixed(2) + ' MB',
+        tablesCount: tables.length,
+        totalRows: totalRows
+      }
+    };
+  } catch (error) {
+    throw new Error(`Invalid SQLite file: ${error.message}`);
+  }
+}
+
+// Excel connection handler
+async function testExcelConnection(connection) {
+  try {
+    if (!connection.fileContent) {
+      throw new Error('Excel file not loaded');
+    }
+
+    const data = new Uint8Array(connection.fileContent);
+    const workbook = XLSX.read(data, { type: 'array' });
+    
+    const tableInfo = [];
+    let totalRows = 0;
+
+    workbook.SheetNames.forEach(sheetName => {
+      const worksheet = workbook.Sheets[sheetName];
+      const jsonData = XLSX.utils.sheet_to_json(worksheet);
+      const rowCount = jsonData.length;
+      totalRows += rowCount;
+      
+      const columns = [];
+      if (jsonData.length > 0) {
+        columns.push(...Object.keys(jsonData[0]));
+      }
+      
+      tableInfo.push({
+        name: sheetName,
+        rows: rowCount,
+        columns: columns
+      });
+    });
+
+    return {
+      success: true,
+      message: `Excel file loaded successfully`,
+      tables: tableInfo,
+      rowCount: totalRows,
+      databaseInfo: {
+        fileSize: (connection.fileSize / 1024 / 1024).toFixed(2) + ' MB',
+        sheetsCount: workbook.SheetNames.length,
+        totalRows: totalRows
+      }
+    };
+  } catch (error) {
+    throw new Error(`Invalid Excel file: ${error.message}`);
+  }
+}
+
+// CSV connection handler
+async function testCSVConnection(connection) {
+  try {
+    if (!connection.fileContent) {
+      throw new Error('CSV file not loaded');
+    }
+
+    const text = new TextDecoder().decode(connection.fileContent);
+    const lines = text.split('\n').filter(line => line.trim());
+    
+    if (lines.length === 0) {
+      throw new Error('CSV file is empty');
+    }
+
+    const headers = lines[0].split(',').map(h => h.trim());
+    const rowCount = lines.length - 1;
+
+    return {
+      success: true,
+      message: `CSV file loaded successfully`,
+      tables: [{
+        name: 'CSV Data',
+        rows: rowCount,
+        columns: headers
+      }],
+      rowCount: rowCount,
+      databaseInfo: {
+        fileSize: (connection.fileSize / 1024 / 1024).toFixed(2) + ' MB',
+        sheetsCount: 1,
+        totalRows: rowCount,
+        columnsCount: headers.length
+      }
+    };
+  } catch (error) {
+    throw new Error(`Invalid CSV file: ${error.message}`);
+  }
+}
+
+// Database connection functions
+async function connectDatabase(connectionId) {
+  const connection = dbManager.getConnection(connectionId);
+  if (!connection) return;
+
+  try {
+    dbManager.updateConnection(connectionId, {
+      status: 'connecting',
+      connectedAt: null,
+      lastError: null
+    });
+    renderDatabaseConnections();
+
+    const result = await testDatabaseConnection(connection);
+    
+    if (result.success) {
+      dbManager.updateConnection(connectionId, {
+        status: 'connected',
+        connectedAt: new Date().toISOString(),
+        lastError: null,
+        tables: result.tables || [],
+        databaseInfo: result.databaseInfo
+      });
+      renderDatabaseConnections();
+      
+      const template = DATABASE_TEMPLATES[connection.dbType];
+      const connectionType = template.connectionType === 'direct' ? 'direct file connection' : 'backend connection';
+      toast(`✅ Connected to ${connection.name} via ${connectionType}. Found ${result.tables?.length || 0} tables.`, 'success');
+    } else {
+      throw new Error(result.message || 'Connection failed');
+    }
+  } catch (error) {
+    dbManager.updateConnection(connectionId, {
+      status: 'disconnected',
+      connectedAt: null,
+      lastError: error.message
+    });
+    renderDatabaseConnections();
+    toast(`❌ Failed to connect to ${connection.name}: ${error.message}`, 'error');
+  }
+}
+
+async function testDatabase(connectionId) {
+  const connection = dbManager.getConnection(connectionId);
+  if (!connection) return;
+
+  try {
+    const statusDot = byId(`dbStatus-${connectionId}`);
+    const statusText = byId(`dbStatusText-${connectionId}`);
+    
+    if (statusDot && statusText) {
+      statusDot.className = 'status-dot connecting';
+      statusText.textContent = 'Testing...';
+    }
+
+    const template = DATABASE_TEMPLATES[connection.dbType];
+    const connectionType = template.connectionType === 'direct' ? 'file' : 'server';
+    
+    toast(`🧪 Testing ${connectionType} connection to ${connection.name}...`, 'success');
+    
+    const result = await testDatabaseConnection(connection);
+    
+    if (result.success) {
+      toast(`✅ Connection test successful for ${connection.name}`, 'success');
+      
+      dbManager.updateConnection(connectionId, {
+        databaseInfo: result.databaseInfo,
+        lastError: null
+      });
+    } else {
+      throw new Error(result.message || 'Connection test failed');
+    }
+  } catch (error) {
+    toast(`❌ Connection test failed for ${connection.name}: ${error.message}`, 'error');
+    
+    dbManager.updateConnection(connectionId, {
+      lastError: error.message
+    });
+  } finally {
+    renderDatabaseConnections();
+  }
+}
+
+async function disconnectDatabase(connectionId) {
+  const connection = dbManager.getConnection(connectionId);
+  if (!connection) return;
+
+  dbManager.updateConnection(connectionId, {
+    status: 'disconnected',
+    connectedAt: null
+  });
+
+  renderDatabaseConnections();
+  toast(`Disconnected from ${connection.name}`, 'warn');
+}
+
+function removeDatabase(connectionId) {
+  const connection = dbManager.getConnection(connectionId);
+  if (!connection) return;
+
+  if (confirm(`Are you sure you want to remove the connection "${connection.name}"?`)) {
+    dbManager.removeConnection(connectionId);
+    renderDatabaseConnections();
+    toast(`Database connection "${connection.name}" removed`, 'warn');
+  }
+}
+
+// Render database connections (UNCHANGED)
+function renderDatabaseConnections() {
+  const container = byId('databaseConnections');
+  const connections = dbManager.getConnections();
+
+  if (connections.length === 0) {
+    container.innerHTML = `
+      <div class="col-12" style="text-align: center; padding: 40px; color: var(--muted);">
+        <div style="font-size: 3rem; margin-bottom: 16px;">🔗</div>
+        <h3>No Database Connections</h3>
+        <p>Click "Add Database Connection" to get started</p>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = connections.map(conn => {
+    const template = DATABASE_TEMPLATES[conn.dbType];
+    const isFileDB = template.connectionType === 'direct';
+    const hasError = conn.lastError && conn.status !== 'connected';
+    
+    let dbTypeClass, dbTypeText;
+    if (isFileDB) {
+      dbTypeClass = 'db-type-file';
+      dbTypeText = 'File Database';
+    } else {
+      dbTypeClass = conn.status === 'connected' ? 'db-type-server' : 'db-type-backend';
+      dbTypeText = conn.status === 'connected' ? 'Server Database' : 'Backend Required';
+    }
+
+    return `
+    <div class="db-connection-card" data-connection-id="${conn.id}">
+      <div class="db-header">
+        <div>
+          <span class="db-icon">${template.icon}</span>
+          <strong>${conn.name}</strong>
+          <div style="font-size: 0.8rem; color: var(--muted); display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+            <span>${template.name}</span>
+            <span class="db-type-badge ${dbTypeClass}">${dbTypeText}</span>
+            ${isFileDB && conn.fileName ? `<span>• ${conn.fileName}</span>` : ''}
+            ${!isFileDB ? `<span>• ${conn.host}:${conn.port}</span>` : ''}
+          </div>
+        </div>
+        <div class="db-status">
+          <div class="status-dot ${conn.status === 'connected' ? 'connected' : conn.status === 'connecting' ? 'connecting' : ''}"
+               id="dbStatus-${conn.id}"></div>
+          <span id="dbStatusText-${conn.id}">
+            ${conn.status === 'connected' ? 'Connected' : 
+              conn.status === 'connecting' ? 'Connecting...' : 'Disconnected'}
+          </span>
+        </div>
+      </div>
+
+      <div class="connection-form">
+        ${hasError ? `
+        <div style="margin-bottom: 12px; padding: 10px; background: rgba(255,68,68,.1); border: 1px solid var(--error); border-radius: 6px;">
+          <strong>Connection Error:</strong> 
+          <div style="font-size: 0.8rem; margin-top: 4px;">${conn.lastError}</div>
+        </div>
+        ` : ''}
+
+        ${isFileDB ? `
+          <div>
+            <label>File Name</label>
+            <input type="text" value="${conn.fileName || 'No file'}" disabled style="background: rgba(0,0,0,.25);">
+          </div>
+        ` : `
+          <div class="form-row">
+            <div>
+              <label>Host</label>
+              <input type="text" value="${conn.host}" disabled style="background: rgba(0,0,0,.25);">
+            </div>
+            <div>
+              <label>Port</label>
+              <input type="text" value="${conn.port}" disabled style="background: rgba(0,0,0,.25);">
+            </div>
+          </div>
+          <div class="form-row">
+            <div>
+              <label>Database</label>
+              <input type="text" value="${conn.database || conn.service || ''}" disabled style="background: rgba(0,0,0,.25);">
+            </div>
+            <div>
+              <label>Username</label>
+              <input type="text" value="${conn.username}" disabled style="background: rgba(0,0,0,.25);">
+            </div>
+          </div>
+        `}
+
+        <div style="margin-top: 12px;">
+          <label>Description</label>
+          <textarea disabled style="background: rgba(0,0,0,.25);">${conn.description || 'No description provided'}</textarea>
+        </div>
+
+        ${conn.databaseInfo ? `
+        <div style="margin-top: 8px; padding: 8px; background: rgba(0,255,136,.1); border-radius: 6px; font-size: 0.8rem;">
+          <strong>Database Info:</strong> ${conn.databaseInfo.tablesCount || conn.databaseInfo.sheetsCount || 0} ${conn.dbType === 'excel' ? 'sheets' : 'tables'}, ${conn.databaseInfo.totalRows || 0} rows
+          ${conn.databaseInfo.fileSize ? ` • ${conn.databaseInfo.fileSize}` : ''}
+        </div>
+        ` : ''}
+
+        <div class="form-row" style="margin-top: 16px;">
+          <button class="btn ${conn.status === 'connected' ? 'btn-danger' : 'btn-success'}"
+                  onclick="${conn.status === 'connected' ? `disconnectDatabase(${conn.id})` : `connectDatabase(${conn.id})`}">
+            ${conn.status === 'connected' ? '🔌 Disconnect' : '🔗 Connect'}
+          </button>
+          <button class="btn btn-warning" onclick="testDatabase(${conn.id})">
+            🧪 Test Connection
+          </button>
+          <button class="btn btn-danger" onclick="removeDatabase(${conn.id})">
+            🗑️ Remove
+          </button>
+        </div>
+
+        ${conn.status === 'connected' ? `
+        <div style="margin-top: 8px; padding: 8px; background: rgba(0,255,136,.1); border-radius: 6px; font-size: 0.8rem;">
+          ✅ Connected since ${new Date(conn.connectedAt).toLocaleString()}
+          ${conn.tables.length > 0 ? `• ${conn.tables.length} ${conn.dbType === 'excel' ? 'sheets' : 'tables'} available` : ''}
+        </div>
+        ` : ''}
+
+        ${!isFileDB && conn.status !== 'connected' ? `
+        <div style="margin-top: 8px; padding: 8px; background: rgba(255,165,0,.1); border-radius: 6px; font-size: 0.8rem;">
+          <strong>Backend Required:</strong> This database type requires the Bathala backend server to be running on your NAS/local network.
+        </div>
+        ` : ''}
+      </div>
+    </div>
+    `;
+  }).join('');
+}
+
+// Show add connection modal (UNCHANGED)
+function showAddConnectionModal() {
+  const modalHtml = `
+    <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.8); display: flex; align-items: center; justify-content: center; z-index: 10000;">
+      <div style="background: var(--card); border: 2px solid var(--neon); border-radius: 16px; padding: 24px; max-width: 500px; width: 90%; max-height: 90vh; overflow-y: auto;">
+        <h3 style="margin-bottom: 20px;">➕ Add Database Connection</h3>
+
+        <div style="margin-bottom: 20px;">
+          <label>Select Database Type</label>
+          <select id="dbTypeSelect" style="width: 100%; margin-bottom: 16px;">
+            <option value="">Choose a database type...</option>
+            <optgroup label="File Databases (Direct Connection)">
+              <option value="sqlite">🗃️ SQLite Database File</option>
+              <option value="excel">📊 Excel File</option>
+              <option value="csv">📋 CSV File</option>
+            </optgroup>
+            <optgroup label="Server Databases (Backend Required)">
+              <option value="postgresql">🐘 PostgreSQL Server</option>
+              <option value="mysql">🐬 MySQL Server</option>
+              <option value="oracle">🗄️ Oracle Database</option>
+              <option value="mssql">🏢 SQL Server</option>
+            </optgroup>
+          </select>
+        </div>
+
+        <div id="connectionFormContainer"></div>
+
+        <div style="display: flex; gap: 10px; margin-top: 20px;">
+          <button class="btn btn-primary" onclick="createConnection()" style="flex: 1;">Create Connection</button>
+          <button class="btn btn-danger" onclick="closeModal()" style="flex: 1;">Cancel</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const modal = document.createElement('div');
+  modal.innerHTML = modalHtml;
+  modal.id = 'connectionModal';
+  document.body.appendChild(modal);
+
+  byId('dbTypeSelect').addEventListener('change', function() {
+    renderConnectionForm(this.value);
+  });
+}
+
+function closeModal() {
+  const modal = byId('connectionModal');
+  if (modal) modal.remove();
+}
+
+function renderConnectionForm(dbType) {
+  const container = byId('connectionFormContainer');
+  if (!dbType) {
+    container.innerHTML = '<p style="color: var(--muted); text-align: center;">Please select a database type</p>';
+    return;
+  }
+
+  const template = DATABASE_TEMPLATES[dbType];
+  const isFileDB = template.connectionType === 'direct';
+  
+  const fieldsHtml = template.fields.map(field => {
+    if (field.type === 'file') {
+      return `
+      <div style="margin-bottom: 12px;">
+        <label>${field.label} ${field.required ? '<span style="color: var(--error)">*</span>' : ''}</label>
+        <input type="file"
+               id="dbField_${field.name}"
+               accept="${field.accept}"
+               ${field.required ? 'required' : ''}
+               style="width: 100%; padding: 8px; border: 1px solid var(--neon); border-radius: 8px; background: rgba(0,0,0,.45); color: #fff;">
+      </div>
+      `;
+    } else if (field.type === 'textarea') {
+      return `
+      <div style="margin-bottom: 12px;">
+        <label>${field.label} ${field.required ? '<span style="color: var(--error)">*</span>' : ''}</label>
+        <textarea id="dbField_${field.name}"
+                  placeholder="${field.placeholder || ''}"
+                  ${field.required ? 'required' : ''}
+                  style="width: 100%; min-height: 60px;">${field.default || ''}</textarea>
+      </div>
+      `;
+    } else {
+      return `
+      <div style="margin-bottom: 12px;">
+        <label>${field.label} ${field.required ? '<span style="color: var(--error)">*</span>' : ''}</label>
+        <input type="${field.type}"
+               id="dbField_${field.name}"
+               placeholder="${field.placeholder || ''}"
+               value="${field.default || ''}"
+               ${field.required ? 'required' : ''}
+               style="width: 100%;">
+      </div>
+      `;
+    }
+  }).join('');
+
+  const connectionInfo = isFileDB ? 
+    '✅ Direct browser connection - perfect for NAS storage' :
+    '🔧 Requires Bathala backend server on your NAS/local network';
+
+  container.innerHTML = `
+    <div style="margin-bottom: 16px; padding: 12px; background: ${isFileDB ? 'rgba(0,255,136,.05)' : 'rgba(255,165,0,.05)'}; border-radius: 8px;">
+      <strong>${template.icon} ${template.name}</strong>
+      <div style="font-size: 0.8rem; color: var(--muted); margin-top: 4px;">${template.description}</div>
+      <div style="font-size: 0.7rem; margin-top: 6px; padding: 4px; background: ${isFileDB ? 'rgba(0,255,136,.1)' : 'rgba(255,165,0,.1)'}; border-radius: 4px;">
+        ${connectionInfo}
+      </div>
+    </div>
+    ${fieldsHtml}
+  `;
+}
+
+async function createConnection() {
+  const dbType = byId('dbTypeSelect').value;
+  if (!dbType) {
+    toast('Please select a database type', 'error');
+    return;
+  }
+
+  const template = DATABASE_TEMPLATES[dbType];
+  const connectionData = {
+    dbType: dbType,
+    name: byId('dbField_name')?.value,
+    description: byId('dbField_description')?.value,
+    icon: template.icon,
+    type: template.name
+  };
+
+  if (template.connectionType === 'direct') {
+    const fileInput = byId('dbField_filePath');
+    if (!fileInput?.files[0]) {
+      toast('Please select a database file', 'error');
+      return;
+    }
+  } else {
+    connectionData.host = byId('dbField_host')?.value;
+    connectionData.port = byId('dbField_port')?.value;
+    connectionData.database = byId('dbField_database')?.value;
+    connectionData.service = byId('dbField_service')?.value;
+    connectionData.username = byId('dbField_username')?.value;
+    connectionData.password = byId('dbField_password')?.value;
+  }
+
+  for (const field of template.fields) {
+    if (field.required) {
+      const value = field.type === 'file' 
+        ? byId(`dbField_${field.name}`)?.files[0]
+        : byId(`dbField_${field.name}`)?.value;
+      
+      if (!value) {
+        toast(`Please fill in the ${field.label} field`, 'error');
+        return;
+      }
+    }
+  }
+
+  try {
+    let file = null;
+    if (template.connectionType === 'direct') {
+      file = byId('dbField_filePath').files[0];
+    }
+
+    await dbManager.addConnection(connectionData, file);
+    renderDatabaseConnections();
+    closeModal();
+    
+    const connectionType = template.connectionType === 'direct' ? 'file database' : 'server database';
+    toast(`Database connection "${connectionData.name}" created as ${connectionType}`, 'success');
+  } catch (error) {
+    toast(`Failed to create connection: ${error.message}`, 'error');
+  }
+}
+
+// ===== Events (UPDATED) =====
 function bindEvents(){
   const fileInput = byId('fileInput');
   if(fileInput){
@@ -2675,7 +2906,9 @@ function bindEvents(){
     });
   }
 
-  // Search events
+  // Database connection events
+  byId('addConnectionBtn').addEventListener('click', showAddConnectionModal);
+
   byId('searchBtn')?.addEventListener('click', performAISearch);
   byId('localFileBtn')?.addEventListener('click', performLocalFileSearch);
   byId('localContentBtn')?.addEventListener('click', performLocalContentSearch);
@@ -2685,7 +2918,6 @@ function bindEvents(){
   byId('checkBalanceBtn')?.addEventListener('click', checkBalance);
   byId('forecastBtn')?.addEventListener('click', performForecastAnalysis);
 
-  // Agent events
   byId('connectAgentsBtn')?.addEventListener('click', async ()=>{
     byId('statusText').textContent='Connecting AI Agents…';
     const results = await Promise.all([
@@ -2729,32 +2961,20 @@ function bindEvents(){
   });
 }
 
-// ===== History renderers =====
-async function refreshHistory(){
-  const s=byId('searchHistory'); const c=byId('consensusHistory');
-  if(!s||!c) return;
-  const searches=await knowledgeBase.listHistory('search',8);
-  const cons=await knowledgeBase.listHistory('consensus',8);
-  s.innerHTML = searches.map(h=>`<button class='history-item' onclick='restoreHistory(${JSON.stringify(h.id)})'><span class='badge'>SEARCH</span><span>${h.title}</span></button>`).join('');
-  c.innerHTML = cons.map(h=>`<button class='history-item' onclick='restoreHistory(${JSON.stringify(h.id)})'><span class='badge' style='border-color:var(--violet);color:var(--violet)'>CONSENSUS</span><span>${h.title}</span></button>`).join('');
-}
-
-async function restoreHistory(id){
-  await knowledgeBase.ready;
-  const tx=knowledgeBase.db.transaction(['history'],'readonly'); const st=tx.objectStore('history');
-  const req=st.get(id);
-  req.onsuccess=()=>{ const rec=req.result; if(rec){ setSearchVisible(); byId('resultsArea').innerHTML = rec.payload; } };
-}
-
-// ===== Init =====
+// ===== Init (UPDATED) =====
 (async function init(){
   await knowledgeBase.ready;
   loadApiKeys();
   await updateDocumentsList();
   await refreshHistory();
+  renderDatabaseConnections();
   bindEvents();
   
-  console.log('Bathala v6.0 initialized with enhanced PDF processing and search navigation');
+  // Check if we're on Vercel and show helpful message
+  if (window.location.hostname.includes('vercel.app')) {
+    console.log('Running on Vercel - AI agents will use proxy endpoints');
+    byId('statusText').textContent = 'BATHALA INTELLIGENCE: Running on Vercel - Configure AI Agents to begin';
+  }
 })();
 </script>
 </body>
