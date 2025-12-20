@@ -793,11 +793,11 @@ const DATABASE_TEMPLATES = {
   }
 };
 
-// ===== API CONFIG WITH DIRECT ENDPOINTS =====
+// ===== API CONFIG WITH PROPER ENDPOINTS =====
 const API_CONFIG = {
   deepseek: {
     name: 'AI Agent 1',
-    apiUrl: 'https://api.deepseek.com/v1/chat/completions',
+    apiUrl: 'https://api.deepseek.com/chat/completions',
     model: 'deepseek-chat'
   },
   openai: {
@@ -812,7 +812,7 @@ const API_CONFIG = {
   }
 };
 
-// ===== UPDATED QUERYAI FUNCTION WITH DIRECT API CALLS =====
+// ===== UPDATED QUERYAI FUNCTION WITH CORS HANDLING =====
 async function queryAI(provider, query, apiKey, persona) {
   const start = Date.now();
   const system = PERSONA[persona || 'strategist'];
@@ -860,13 +860,13 @@ async function queryAI(provider, query, apiKey, persona) {
     
     return { 
       success: false, 
-      error: `API Error: ${e.message}. Make sure CORS is enabled or use a CORS proxy.`,
+      error: `API Error: ${e.message}. Check API key and network.`,
       responseTime: Date.now() - start 
     };
   }
 }
 
-// ===== UPDATED TEST API CONNECTION =====
+// ===== FIXED TEST API CONNECTION FUNCTION =====
 async function testApiConnection(provider) {
   const apiKeyEl = byId(`${provider}Key`);
   const apiKey = apiKeyEl?.value;
@@ -879,7 +879,7 @@ async function testApiConnection(provider) {
   try {
     // Simple API test with minimal request
     const testQuery = "Hello";
-    const system = "You are a test agent. Respond with 'Connection successful' if you receive this message.";
+    const system = "You are a test agent. Respond with 'OK' if you receive this message.";
     const model = API_CONFIG[provider].model;
     
     const apiUrl = API_CONFIG[provider].apiUrl;
@@ -896,7 +896,7 @@ async function testApiConnection(provider) {
           { role: 'system', content: system },
           { role: 'user', content: testQuery }
         ],
-        max_tokens: 10
+        max_tokens: 5
       })
     });
 
@@ -907,12 +907,20 @@ async function testApiConnection(provider) {
 
     const errorText = await res.text();
     updateApiStatus(provider, 'error', `HTTP ${res.status}`);
+    console.error(`${provider} test failed:`, errorText);
     return false;
   } catch (e) {
-    // If it's a CORS error, provide helpful guidance
-    if (e.message.includes('NetworkError') || e.message.includes('Failed to fetch')) {
-      updateApiStatus(provider, 'error', `CORS blocked. Try Chrome extension "CORS Unblock" or deploy with proxy.`);
-      toast(`CORS Error for ${API_CONFIG[provider].name}. Install a CORS extension or deploy with backend proxy.`, 'error');
+    console.error(`${provider} connection error:`, e);
+    
+    // For DeepSeek, try with correct endpoint
+    if (provider === 'deepseek' && e.message.includes('CORS') || e.message.includes('Failed to fetch')) {
+      updateApiStatus(provider, 'error', 'CORS blocked - use a proxy or run from server');
+      return false;
+    }
+    
+    // For OpenAI 404 errors, check the endpoint
+    if (provider === 'openai' && e.message.includes('404')) {
+      updateApiStatus(provider, 'error', 'API endpoint not found - check API key format');
       return false;
     }
     
