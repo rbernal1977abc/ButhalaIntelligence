@@ -793,52 +793,26 @@ const DATABASE_TEMPLATES = {
   }
 };
 
-// ====== CRITICAL FIXES START HERE ======
-
-// ===== API CONFIG WITH PROXY SUPPORT =====
-// ✅ ALL AGENTS UPDATED FOR VERCEL PROXY
-// ===== API CONFIG WITH PROXY SUPPORT =====
+// ===== API CONFIG WITH DIRECT ENDPOINTS =====
 const API_CONFIG = {
   deepseek: {
     name: 'AI Agent 1',
-    // ✅ Simple relative paths for Vercel
-    proxyUrl: '/api/proxy/deepseek',
+    apiUrl: 'https://api.deepseek.com/v1/chat/completions',
     model: 'deepseek-chat'
   },
   openai: {
     name: 'AI Agent 2',
-    proxyUrl: '/api/proxy/openai',
+    apiUrl: 'https://api.openai.com/v1/chat/completions',
     model: 'gpt-3.5-turbo'
   },
   grok: {
     name: 'AI Agent 3',
-    proxyUrl: '/api/proxy/grok',
-    model: 'grok-code-fast-1'
+    apiUrl: 'https://api.x.ai/v1/chat/completions',
+    model: 'grok-beta'
   }
 };
 
-// ===== SIMPLIFIED URL GETTER =====
-function getApiUrl(provider) {
-  // Always use proxy URLs (simpler approach)
-  return API_CONFIG[provider].proxyUrl;
-}
-
-// ===== SMART PROXY DETECTION =====
-function getApiUrl(provider) {
-  // Check if we're on Vercel (has window.location.hostname containing 'vercel.app')
-  const isVercel = window.location.hostname.includes('vercel.app');
-  const isLocalhost = window.location.hostname.includes('localhost');
-  
-  if (isVercel || isLocalhost) {
-    // Use relative path for Vercel or localhost
-    return API_CONFIG[provider].proxyUrl;
-  } else {
-    // Direct API for other environments (not recommended due to CORS)
-    return API_CONFIG[provider].apiUrl;
-  }
-}
-
-// ===== UPDATED QUERYAI FUNCTION =====
+// ===== UPDATED QUERYAI FUNCTION WITH DIRECT API CALLS =====
 async function queryAI(provider, query, apiKey, persona) {
   const start = Date.now();
   const system = PERSONA[persona || 'strategist'];
@@ -852,7 +826,7 @@ async function queryAI(provider, query, apiKey, persona) {
   }
 
   try {
-    const apiUrl = getApiUrl(provider);
+    const apiUrl = API_CONFIG[provider].apiUrl;
     
     const res = await fetch(apiUrl, {
       method: 'POST',
@@ -884,16 +858,11 @@ async function queryAI(provider, query, apiKey, persona) {
   } catch (e) {
     console.error(`${provider} API error:`, e);
     
-    // Special handling for CORS errors
-    if (e.message.includes('NetworkError') || e.message.includes('Failed to fetch')) {
-      return { 
-        success: false, 
-        error: `CORS/Network Error. When deploying to Vercel, you need to add a proxy server file. Create '/api/proxy.js' with the code provided in the deployment instructions.`,
-        responseTime: Date.now() - start 
-      };
-    }
-    
-    return { success: false, error: e.message, responseTime: Date.now() - start };
+    return { 
+      success: false, 
+      error: `API Error: ${e.message}. Make sure CORS is enabled or use a CORS proxy.`,
+      responseTime: Date.now() - start 
+    };
   }
 }
 
@@ -908,12 +877,12 @@ async function testApiConnection(provider) {
   }
 
   try {
-    // Skip actual connection test (models endpoint often has CORS issues)
-    // Instead, try a minimal test query
+    // Simple API test with minimal request
     const testQuery = "Hello";
     const system = "You are a test agent. Respond with 'Connection successful' if you receive this message.";
+    const model = API_CONFIG[provider].model;
     
-    const apiUrl = getApiUrl(provider);
+    const apiUrl = API_CONFIG[provider].apiUrl;
     
     const res = await fetch(apiUrl, {
       method: 'POST',
@@ -922,7 +891,7 @@ async function testApiConnection(provider) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: API_CONFIG[provider].model,
+        model,
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: testQuery }
@@ -940,10 +909,11 @@ async function testApiConnection(provider) {
     updateApiStatus(provider, 'error', `HTTP ${res.status}`);
     return false;
   } catch (e) {
-    // If it's a CORS error, show helpful message
+    // If it's a CORS error, provide helpful guidance
     if (e.message.includes('NetworkError') || e.message.includes('Failed to fetch')) {
-      updateApiStatus(provider, 'saved', 'Configured (proxy needed for Vercel)');
-      return true; // Return true so UI shows as configured
+      updateApiStatus(provider, 'error', `CORS blocked. Try Chrome extension "CORS Unblock" or deploy with proxy.`);
+      toast(`CORS Error for ${API_CONFIG[provider].name}. Install a CORS extension or deploy with backend proxy.`, 'error');
+      return false;
     }
     
     updateApiStatus(provider, 'error', `Connection failed: ${e.message}`);
@@ -951,7 +921,7 @@ async function testApiConnection(provider) {
   }
 }
 
-// ===== Persona prompts (UNCHANGED) =====
+// ===== Persona prompts =====
 const PERSONA = {
   analyst: `You are Bathala (Analyst). Be precise, statistical, cite assumptions, provide numbered steps and short tables when helpful.`,
   ethicist: `You are Bathala (Ethicist). Prioritize safety, fairness, consent, governance impacts. Highlight tradeoffs and ethical risks.`,
@@ -959,7 +929,7 @@ const PERSONA = {
   creative: `You are Bathala (Creative). Provide novel ideas, metaphors, and multiple alternatives. Keep it practical.`
 };
 
-// ===== Sidebar navigation (UNCHANGED) =====
+// ===== Sidebar navigation =====
 function activatePanel(name) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   const panel = document.querySelector(`#panel-${name}`);
@@ -981,7 +951,7 @@ document.querySelectorAll('.nav button').forEach(button => {
 
 console.log('Bathala v5.0: Navigation system loaded.');
 
-// ===== Status helpers (UPDATED) =====
+// ===== Status helpers =====
 function updateApiStatus(provider, status, message) {
   const dot = byId(`${provider}Status`);
   const text = byId(`${provider}StatusText`);
@@ -1027,7 +997,7 @@ function disconnectAgents() {
   byId('statusText').textContent = 'BATHALA INTELLIGENCE: All agents disconnected';
 }
 
-// ===== Knowledge Base (IndexedDB) - UNCHANGED =====
+// ===== Knowledge Base (IndexedDB) =====
 class LocalKnowledgeBase {
   constructor() {
     this.db = null;
@@ -1203,7 +1173,7 @@ async function fingerprintOf(obj) {
   return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// ===== File Processor (UNCHANGED) =====
+// ===== File Processor =====
 class FileProcessor {
   showProgress() {
     const info = byId('fileProcessingInfo');
@@ -1306,8 +1276,9 @@ class FileProcessor {
       };
     } catch (e) {
       this.updateProgress(file.name, 'PDF conversion failed', 100);
+      console.error('PDF processing error:', e);
       return {
-        text: '[PDF processing failed]',
+        text: '[PDF processing failed - try a different file]',
         info: 'PDF processing error',
         conversionType: 'Failed'
       };
@@ -1339,72 +1310,117 @@ class FileProcessor {
 
       if (file.type.includes('image')) {
         this.updateProgress(file.name, 'OCR on image…', 50);
-        const worker = await Tesseract.createWorker('eng');
-        const { data: { text } } = await worker.recognize(file);
-        await worker.terminate();
-        this.updateProgress(file.name, 'Completed', 100);
+        try {
+          const worker = await Tesseract.createWorker('eng');
+          const { data: { text } } = await worker.recognize(file);
+          await worker.terminate();
+          this.updateProgress(file.name, 'Completed', 100);
 
-        return {
-          success: true,
-          content: this.buildMeta(file, 'OCR completed', 'OCR Processing') + "\n\n" + text,
-          extractedText: text,
-          conversionType: 'OCR Processing'
-        };
+          return {
+            success: true,
+            content: this.buildMeta(file, 'OCR completed', 'OCR Processing') + "\n\n" + text,
+            extractedText: text,
+            conversionType: 'OCR Processing'
+          };
+        } catch (ocrError) {
+          console.error('OCR error:', ocrError);
+          this.updateProgress(file.name, 'OCR failed, storing as image', 100);
+          return {
+            success: true,
+            content: this.buildMeta(file, 'Image stored (OCR failed)', 'Image Only') + "\n\n[Image file - OCR processing failed]",
+            extractedText: '[Image file - OCR failed]',
+            conversionType: 'Image Only'
+          };
+        }
       }
 
       if (file.name.toLowerCase().endsWith('.docx')) {
         this.updateProgress(file.name, 'Processing DOCX…', 40);
-        const ab = await file.arrayBuffer();
-        const r = await mammoth.extractRawText({ arrayBuffer: ab });
-        const txt = r.value || 'No text';
-        this.updateProgress(file.name, 'Completed', 100);
+        try {
+          const ab = await file.arrayBuffer();
+          const r = await mammoth.extractRawText({ arrayBuffer: ab });
+          const txt = r.value || 'No text';
+          this.updateProgress(file.name, 'Completed', 100);
 
-        return {
-          success: true,
-          content: this.buildMeta(file, 'DOCX processed', 'Direct Processing') + "\n\n" + txt,
-          extractedText: txt,
-          conversionType: 'Direct Processing'
-        };
+          return {
+            success: true,
+            content: this.buildMeta(file, 'DOCX processed', 'Direct Processing') + "\n\n" + txt,
+            extractedText: txt,
+            conversionType: 'Direct Processing'
+          };
+        } catch (docxError) {
+          console.error('DOCX error:', docxError);
+          this.updateProgress(file.name, 'DOCX processing failed', 100);
+          return {
+            success: true,
+            content: this.buildMeta(file, 'DOCX processing failed', 'Failed Processing') + "\n\n[DOCX file - processing failed]",
+            extractedText: '[DOCX file - processing failed]',
+            conversionType: 'Failed Processing'
+          };
+        }
       }
 
       if (file.name.toLowerCase().match(/\.(xlsx|xls)$/)) {
         this.updateProgress(file.name, 'Processing Excel…', 50);
-        const ab = await file.arrayBuffer();
-        const wb = XLSX.read(new Uint8Array(ab), { type: 'array' });
-        let txt = '';
+        try {
+          const ab = await file.arrayBuffer();
+          const wb = XLSX.read(new Uint8Array(ab), { type: 'array' });
+          let txt = '';
 
-        wb.SheetNames.forEach(s => {
-          const ws = wb.Sheets[s];
-          txt += `Sheet: ${s}\n` + XLSX.utils.sheet_to_csv(ws) + "\n\n";
+          wb.SheetNames.forEach(s => {
+            const ws = wb.Sheets[s];
+            txt += `Sheet: ${s}\n` + XLSX.utils.sheet_to_csv(ws) + "\n\n";
+          });
+
+          this.updateProgress(file.name, 'Completed', 100);
+
+          return {
+            success: true,
+            content: this.buildMeta(file, `Excel processed: ${wb.SheetNames.length} sheets`, 'Direct Processing') + "\n\n" + txt,
+            extractedText: txt,
+            conversionType: 'Direct Processing'
+          };
+        } catch (excelError) {
+          console.error('Excel error:', excelError);
+          this.updateProgress(file.name, 'Excel processing failed', 100);
+          return {
+            success: true,
+            content: this.buildMeta(file, 'Excel processing failed', 'Failed Processing') + "\n\n[Excel file - processing failed]",
+            extractedText: '[Excel file - processing failed]',
+            conversionType: 'Failed Processing'
+          };
+        }
+      }
+
+      // Fallback text
+      this.updateProgress(file.name, 'Reading text…', 60);
+      try {
+        const txt = await new Promise((resolve) => {
+          const r = new FileReader();
+          r.onload = e => resolve(e.target.result || '');
+          r.readAsText(file);
         });
 
         this.updateProgress(file.name, 'Completed', 100);
 
         return {
           success: true,
-          content: this.buildMeta(file, `Excel processed: ${wb.SheetNames.length} sheets`, 'Direct Processing') + "\n\n" + txt,
+          content: this.buildMeta(file, 'Text file processed', 'Direct Processing') + "\n\n" + txt,
           extractedText: txt,
           conversionType: 'Direct Processing'
         };
+      } catch (textError) {
+        console.error('Text reading error:', textError);
+        this.updateProgress(file.name, 'Completed with warnings', 100);
+        return {
+          success: true,
+          content: this.buildMeta(file, 'Processing completed with errors', 'Basic Processing') + "\n\nFile stored successfully but content extraction failed.",
+          extractedText: 'File stored (extraction failed)',
+          conversionType: 'Basic Processing'
+        };
       }
-
-      // Fallback text
-      this.updateProgress(file.name, 'Reading text…', 60);
-      const txt = await new Promise((resolve) => {
-        const r = new FileReader();
-        r.onload = e => resolve(e.target.result || '');
-        r.readAsText(file);
-      });
-
-      this.updateProgress(file.name, 'Completed', 100);
-
-      return {
-        success: true,
-        content: this.buildMeta(file, 'Text file processed', 'Direct Processing') + "\n\n" + txt,
-        extractedText: txt,
-        conversionType: 'Direct Processing'
-      };
     } catch (e) {
+      console.error('File processing error:', e);
       this.updateProgress(file.name, 'Completed with warnings', 100);
       return {
         success: true,
@@ -1429,7 +1445,10 @@ CONVERSION_TYPE: ${conv}`;
     try {
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
+        console.log(`Processing file: ${f.name}, type: ${f.type}, size: ${f.size} bytes`);
+        
         const r = await this.extractText(f);
+        console.log(`File processing result: ${r.success ? 'success' : 'failed'}`);
 
         if (r.success) {
           await knowledgeBase.storeDocument(f, r.content, r.extractedText, r.conversionType);
@@ -1438,6 +1457,9 @@ CONVERSION_TYPE: ${conv}`;
           toast(r.content, 'error');
         }
       }
+    } catch (error) {
+      console.error('Error in processFiles:', error);
+      toast('Error processing files', 'error');
     } finally {
       this.hideProgress();
       await updateDocumentsList();
@@ -1447,7 +1469,7 @@ CONVERSION_TYPE: ${conv}`;
 
 const fileProcessor = new FileProcessor();
 
-// Documents list renderers (UNCHANGED)
+// Documents list renderers
 async function renderDocuments(into) {
   if (!into) return;
 
@@ -1489,7 +1511,7 @@ async function deleteDocument(id) {
   toast('Document deleted', 'warn');
 }
 
-// Highlight search terms (UNCHANGED)
+// Highlight search terms
 function highlight(text, q) {
   if (!q || !text) return text;
 
@@ -1504,7 +1526,7 @@ function highlight(text, q) {
   return t;
 }
 
-// Provider arbitration (UNCHANGED)
+// Provider arbitration
 function getArbitrationProvider() {
   for (const p of ['openai', 'deepseek', 'grok']) {
     const el = byId(`${p}Key`);
@@ -1513,7 +1535,7 @@ function getArbitrationProvider() {
   return null;
 }
 
-// Combined AI Query (UNCHANGED)
+// Combined AI Query
 async function combinedAIQuery(provider, query, apiKey, persona) {
   const relevantDocs = await knowledgeBase.searchDocuments(query);
 
@@ -1541,7 +1563,7 @@ ${all}`;
   return await queryAI(provider, enhanced, apiKey, persona);
 }
 
-// Database AI Query (UNCHANGED)
+// Database AI Query
 async function databaseAIQuery(provider, query, apiKey, persona) {
   const connectedDbs = dbManager.getConnectedDatabases();
   
@@ -1599,7 +1621,7 @@ Focus on the database structure and how it relates to the user's query.`;
   return await queryAI(provider, enhanced, apiKey, persona);
 }
 
-// Super Mode AI Query (UNCHANGED)
+// Super Mode AI Query
 async function superModeAIQuery(provider, query, apiKey, persona) {
   const relevantDocs = await knowledgeBase.searchDocuments(query);
   const connectedDbs = dbManager.getConnectedDatabases();
@@ -1654,7 +1676,7 @@ Perform comprehensive analysis using ALL available data sources. Integrate insig
   return await queryAI(provider, enhanced, apiKey, persona);
 }
 
-// Forecast AI Query (UNCHANGED)
+// Forecast AI Query
 async function forecastAIQuery(provider, query, apiKey, persona) {
   const resultsCards = $$('.response-card');
   if (resultsCards.length === 0) {
@@ -1702,7 +1724,7 @@ Focus on actionable insights and evidence-based projections.`;
   return await queryAI(provider, enhanced, apiKey, persona);
 }
 
-// Render responses (UPDATED)
+// Render responses
 function renderCompareResults(query, results) {
   let html = `<h3 style="color:var(--warn);margin-bottom:12px">🚀 AI SEARCH: "${query}"</h3><div class="response-grid">`;
   for(const r of results){
@@ -1717,13 +1739,13 @@ function renderCompareResults(query, results) {
   return html;
 }
 
-// Loading helpers for search (UNCHANGED)
+// Loading helpers for search
 function setSearchVisible() {
   const sec = byId('resultsSection');
   if(sec) sec.style.display='';
 }
 
-// Search actions + History push (UPDATED)
+// Search actions + History push
 async function performAISearch() {
   const query=byId('searchInput').value.trim();
   const provider=byId('aiProvider').value;
@@ -1761,7 +1783,6 @@ async function performAISearch() {
   byId('statusText').textContent='BATHALA INTELLIGENCE: AI search completed';
 }
 
-// All other search functions remain UNCHANGED...
 async function performLocalFileSearch(){
   const q=byId('searchInput').value.trim(); if(!q) return toast('Enter a search query','warn');
   setSearchVisible(); byId('statusText').textContent='BATHALA INTELLIGENCE: Searching local file database…';
@@ -1777,20 +1798,142 @@ async function performLocalFileSearch(){
   }
 }
 
-async function performLocalContentSearch(){
-  const q=byId('searchInput').value.trim(); if(!q) return toast('Enter a search query','warn');
-  setSearchVisible(); byId('statusText').textContent='BATHALA INTELLIGENCE: Searching local content (OCR)…';
-  const docs=await knowledgeBase.searchDocuments(q);
-  if(docs.length===0){
+// UPDATED: performLocalContentSearch function
+async function performLocalContentSearch() {
+  const q = byId('searchInput').value.trim();
+  if (!q) return toast('Enter a search query', 'warn');
+  
+  setSearchVisible(); 
+  byId('statusText').textContent = 'BATHALA INTELLIGENCE: Searching local content (OCR)…';
+  
+  const docs = await knowledgeBase.searchDocuments(q);
+  
+  if (docs.length === 0) {
     byId('resultsArea').innerHTML = `<div class='card'>❌ No content matches "${q}"</div>`;
   } else {
-    let html='';
-    docs.forEach((d)=>{
-      const prev = highlight(d.content.slice(0,1500), q);
-      html+=`<div class='response-card'><div class='response-header'><div class='provider-badge'>📖 ${d.filename}</div><div>${(d.size/(1024*1024)).toFixed(2)}MB</div></div><div class='response-content'>${prev}${d.content.length>1500?'…':''}</div></div>`;
+    let html = `<div style="margin-bottom: 16px; padding: 10px; background: rgba(0,255,136,.1); border-radius: 8px;">
+                  <strong>🔍 Search Results for: "${q}"</strong><br>
+                  Found ${docs.length} document(s) containing your search terms
+                </div>`;
+    
+    // Helper function to split content into pages/sections
+    function splitIntoPages(content) {
+      // For PDFs and OCR documents, look for page markers
+      if (content.includes('[OCR Page') || content.includes('Page ')) {
+        const pageRegex = /(?:\[OCR Page \d+\]:|Page \d+:)/gi;
+        const sections = content.split(pageRegex);
+        
+        // Remove empty sections and clean up
+        return sections
+          .filter(section => section && section.trim().length > 0)
+          .map(section => section.trim());
+      }
+      
+      // For other documents, split by large whitespace or line breaks
+      return content.split(/\n\s*\n/).filter(section => section.trim().length > 50);
+    }
+    
+    // Process each document to find ALL occurrences
+    docs.forEach((d, docIndex) => {
+      // Get the searchable content (OCR converted text)
+      const searchableContent = d.searchableContent || d.content || '';
+      
+      // Split into pages/sections
+      const sections = splitIntoPages(searchableContent);
+      
+      // Find all sections that contain the search terms
+      const matchingSections = [];
+      
+      const searchTerms = q.toLowerCase().split(/\s+/).filter(term => term.length > 2);
+      
+      sections.forEach((section, sectionIndex) => {
+        const sectionLower = section.toLowerCase();
+        let hasMatch = false;
+        
+        // Check if any search term appears in this section
+        for (const term of searchTerms) {
+          if (sectionLower.includes(term)) {
+            hasMatch = true;
+            break;
+          }
+        }
+        
+        if (hasMatch) {
+          // Count occurrences
+          let totalOccurrences = 0;
+          let highlightedSection = section;
+          
+          // Highlight ALL occurrences of each search term
+          searchTerms.forEach(term => {
+            const regex = new RegExp(`(${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+            const matches = (section.match(regex) || []).length;
+            totalOccurrences += matches;
+            
+            // Apply highlighting
+            highlightedSection = highlightedSection.replace(regex, 
+              '<span style="background: #ffff00; color: #000; font-weight: bold; padding: 1px 3px; border-radius: 3px;">$1</span>'
+            );
+          });
+          
+          matchingSections.push({
+            index: sectionIndex,
+            content: highlightedSection,
+            occurrences: totalOccurrences
+          });
+        }
+      });
+      
+      if (matchingSections.length > 0) {
+        // Create document header with match count
+        const totalMatches = matchingSections.reduce((sum, section) => sum + section.occurrences, 0);
+        
+        html += `<div class='response-card' style="margin-bottom: 20px;">
+          <div class='response-header'>
+            <div class='provider-badge'>📖 ${d.filename}</div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <span style="background: var(--neon); color: #000; padding: 2px 8px; border-radius: 6px; font-size: 0.8rem;">
+                ${matchingSections.length} section(s) · ${totalMatches} matches
+              </span>
+              ${d.conversionType === 'OCR Enhanced' ? 
+                '<span style="background: var(--violet); color: #fff; padding: 2px 8px; border-radius: 6px; font-size: 0.8rem;">OCR</span>' : 
+                ''}
+            </div>
+          </div>
+          <div class='response-content'>`;
+        
+        // Show each matching section
+        matchingSections.forEach((section, sectionIdx) => {
+          html += `<div style="margin-bottom: 20px; padding: 12px; background: rgba(0,0,0,.2); border-radius: 8px; border-left: 4px solid var(--neon);">
+            <div style="margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+              <strong style="color: var(--neon);">
+                📄 ${d.conversionType === 'OCR Enhanced' ? 'Page' : 'Section'} ${section.index + 1}
+              </strong>
+              <span style="font-size: 0.8rem; background: rgba(255,255,0,.2); padding: 2px 8px; border-radius: 4px;">
+                ${section.occurrences} occurrence(s)
+              </span>
+            </div>
+            <div style="white-space: pre-wrap; max-height: 400px; overflow-y: auto; padding: 10px; background: rgba(0,0,0,.4); border-radius: 6px;">
+              ${section.content}
+            </div>
+          </div>`;
+        });
+        
+        html += `</div>
+          <div style="margin-top: 12px; padding: 8px; background: rgba(0,255,136,.05); border-radius: 6px; font-size: 0.8rem;">
+            <strong>Document Info:</strong> ${d.fileType}, ${(d.size/(1024*1024)).toFixed(2)}MB, 
+            ${d.wordCount} words • <strong>Processing:</strong> ${d.conversionType || 'Unknown'}
+          </div>
+        </div>`;
+      }
     });
+    
     byId('resultsArea').innerHTML = html;
-    await knowledgeBase.pushHistory({ type:'search', title:`Content: ${q.slice(0,48)}`, payload: html }); await refreshHistory();
+    await knowledgeBase.pushHistory({ 
+      type: 'search', 
+      title: `Content: "${q.slice(0, 30)}${q.length > 30 ? '...' : ''}"`, 
+      payload: html 
+    }); 
+    await refreshHistory();
   }
 }
 
@@ -2025,7 +2168,7 @@ async function performForecastAnalysis() {
   byId('statusText').textContent = 'BATHALA INTELLIGENCE: Forecast analysis completed';
 }
 
-// ===== Consensus Synthesis + Visualization (UNCHANGED) =====
+// ===== Consensus Synthesis + Visualization =====
 function jaccard(a,b){
   const A=new Set((a||'').split(/\W+/).map(x=>x.toLowerCase()).filter(Boolean));
   const B=new Set((b||'').split(/\W+/).map(x=>x.toLowerCase()).filter(Boolean));
@@ -2161,7 +2304,7 @@ Return ONLY JSON object.`;
   toast('Consensus synthesized','success');
 }
 
-// ===== History renderers (UNCHANGED) =====
+// ===== History renderers =====
 async function refreshHistory(){
   const s=byId('searchHistory'); const c=byId('consensusHistory');
   if(!s||!c) return;
@@ -2177,7 +2320,7 @@ async function restoreHistory(id){
   req.onsuccess=()=>{ const rec=req.result; if(rec){ setSearchVisible(); if(rec.type==='search'){ byId('resultsArea').innerHTML = rec.payload; } else { byId('consensusBlock').style.display='block'; byId('consensusBlock').innerHTML = rec.payload; } } };
 }
 
-// ===== Database Manager (UNCHANGED from your original) =====
+// ===== Database Manager =====
 const BACKEND_CONFIG = {
   enabled: false,
   url: 'http://localhost:3001/api',
@@ -2585,7 +2728,7 @@ function removeDatabase(connectionId) {
   }
 }
 
-// Render database connections (UNCHANGED)
+// Render database connections
 function renderDatabaseConnections() {
   const container = byId('databaseConnections');
   const connections = dbManager.getConnections();
@@ -2717,7 +2860,7 @@ function renderDatabaseConnections() {
   }).join('');
 }
 
-// Show add connection modal (UNCHANGED)
+// Show add connection modal
 function showAddConnectionModal() {
   const modalHtml = `
     <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.8); display: flex; align-items: center; justify-content: center; z-index: 10000;">
@@ -2891,7 +3034,7 @@ async function createConnection() {
   }
 }
 
-// ===== Events (UPDATED) =====
+// ===== Events =====
 function bindEvents(){
   const fileInput = byId('fileInput');
   if(fileInput){
@@ -2899,6 +3042,10 @@ function bindEvents(){
       const files=e.target.files;
       if(files.length>0){
         byId('statusText').textContent=`Processing ${files.length} file(s)…`;
+        console.log(`Files selected: ${files.length}`);
+        for (let file of files) {
+          console.log(`File: ${file.name}, Type: ${file.type}, Size: ${file.size}`);
+        }
         await fileProcessor.processFiles(files);
         byId('statusText').textContent=`${files.length} file(s) processed`;
         e.target.value='';
@@ -2961,7 +3108,7 @@ function bindEvents(){
   });
 }
 
-// ===== Init (UPDATED) =====
+// ===== Init =====
 (async function init(){
   await knowledgeBase.ready;
   loadApiKeys();
@@ -2970,11 +3117,8 @@ function bindEvents(){
   renderDatabaseConnections();
   bindEvents();
   
-  // Check if we're on Vercel and show helpful message
-  if (window.location.hostname.includes('vercel.app')) {
-    console.log('Running on Vercel - AI agents will use proxy endpoints');
-    byId('statusText').textContent = 'BATHALA INTELLIGENCE: Running on Vercel - Configure AI Agents to begin';
-  }
+  // Initial status
+  byId('statusText').textContent = 'BATHALA INTELLIGENCE: Configure AI Agents to begin';
 })();
 </script>
 </body>
