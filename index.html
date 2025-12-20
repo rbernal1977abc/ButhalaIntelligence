@@ -796,12 +796,9 @@ const DATABASE_TEMPLATES = {
 // ====== CRITICAL FIXES START HERE ======
 
 // ===== API CONFIG WITH PROXY SUPPORT =====
-// ✅ ALL AGENTS UPDATED FOR VERCEL PROXY
-// ===== API CONFIG WITH PROXY SUPPORT =====
 const API_CONFIG = {
   deepseek: {
     name: 'AI Agent 1',
-    // ✅ Simple relative paths for Vercel
     proxyUrl: '/api/proxy/deepseek',
     model: 'deepseek-chat'
   },
@@ -823,135 +820,7 @@ function getApiUrl(provider) {
   return API_CONFIG[provider].proxyUrl;
 }
 
-// ===== SMART PROXY DETECTION =====
-function getApiUrl(provider) {
-  // Check if we're on Vercel (has window.location.hostname containing 'vercel.app')
-  const isVercel = window.location.hostname.includes('vercel.app');
-  const isLocalhost = window.location.hostname.includes('localhost');
-  
-  if (isVercel || isLocalhost) {
-    // Use relative path for Vercel or localhost
-    return API_CONFIG[provider].proxyUrl;
-  } else {
-    // Direct API for other environments (not recommended due to CORS)
-    return API_CONFIG[provider].apiUrl;
-  }
-}
-
-// ===== UPDATED QUERYAI FUNCTION =====
-async function queryAI(provider, query, apiKey, persona) {
-  const start = Date.now();
-  const system = PERSONA[persona || 'strategist'];
-  const model = API_CONFIG[provider].model;
-
-  const fp = await fingerprintOf({ provider, model, persona, query });
-  const cached = await knowledgeBase.getResponse(fp);
-
-  if (cached) {
-    return { success: true, content: cached.content, responseTime: 0, cached: true };
-  }
-
-  try {
-    const apiUrl = getApiUrl(provider);
-    
-    const res = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: query }
-        ],
-        max_tokens: 1000,
-        temperature: 0.7
-      })
-    });
-
-    if (!res.ok) {
-      const t = await res.text();
-      throw new Error(`API ${res.status} - ${t}`);
-    }
-
-    const data = await res.json();
-    const content = data.choices?.[0]?.message?.content || '[No content]';
-
-    await knowledgeBase.putResponse(fp, { content, at: Date.now() });
-    return { success: true, content, responseTime: Date.now() - start };
-  } catch (e) {
-    console.error(`${provider} API error:`, e);
-    
-    // Special handling for CORS errors
-    if (e.message.includes('NetworkError') || e.message.includes('Failed to fetch')) {
-      return { 
-        success: false, 
-        error: `CORS/Network Error. When deploying to Vercel, you need to add a proxy server file. Create '/api/proxy.js' with the code provided in the deployment instructions.`,
-        responseTime: Date.now() - start 
-      };
-    }
-    
-    return { success: false, error: e.message, responseTime: Date.now() - start };
-  }
-}
-
-// ===== UPDATED TEST API CONNECTION =====
-async function testApiConnection(provider) {
-  const apiKeyEl = byId(`${provider}Key`);
-  const apiKey = apiKeyEl?.value;
-
-  if (!apiKey) {
-    updateApiStatus(provider, 'error', 'No API key provided');
-    return false;
-  }
-
-  try {
-    // Skip actual connection test (models endpoint often has CORS issues)
-    // Instead, try a minimal test query
-    const testQuery = "Hello";
-    const system = "You are a test agent. Respond with 'Connection successful' if you receive this message.";
-    
-    const apiUrl = getApiUrl(provider);
-    
-    const res = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: API_CONFIG[provider].model,
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: testQuery }
-        ],
-        max_tokens: 10
-      })
-    });
-
-    if (res.ok) {
-      updateApiStatus(provider, 'connected');
-      return true;
-    }
-
-    const errorText = await res.text();
-    updateApiStatus(provider, 'error', `HTTP ${res.status}`);
-    return false;
-  } catch (e) {
-    // If it's a CORS error, show helpful message
-    if (e.message.includes('NetworkError') || e.message.includes('Failed to fetch')) {
-      updateApiStatus(provider, 'saved', 'Configured (proxy needed for Vercel)');
-      return true; // Return true so UI shows as configured
-    }
-    
-    updateApiStatus(provider, 'error', `Connection failed: ${e.message}`);
-    return false;
-  }
-}
-
-// ===== Persona prompts (UNCHANGED) =====
+// ===== Persona prompts =====
 const PERSONA = {
   analyst: `You are Bathala (Analyst). Be precise, statistical, cite assumptions, provide numbered steps and short tables when helpful.`,
   ethicist: `You are Bathala (Ethicist). Prioritize safety, fairness, consent, governance impacts. Highlight tradeoffs and ethical risks.`,
@@ -959,7 +828,7 @@ const PERSONA = {
   creative: `You are Bathala (Creative). Provide novel ideas, metaphors, and multiple alternatives. Keep it practical.`
 };
 
-// ===== Sidebar navigation (UNCHANGED) =====
+// ===== Sidebar navigation =====
 function activatePanel(name) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   const panel = document.querySelector(`#panel-${name}`);
@@ -981,7 +850,7 @@ document.querySelectorAll('.nav button').forEach(button => {
 
 console.log('Bathala v5.0: Navigation system loaded.');
 
-// ===== Status helpers (UPDATED) =====
+// ===== Status helpers =====
 function updateApiStatus(provider, status, message) {
   const dot = byId(`${provider}Status`);
   const text = byId(`${provider}StatusText`);
@@ -1027,7 +896,7 @@ function disconnectAgents() {
   byId('statusText').textContent = 'BATHALA INTELLIGENCE: All agents disconnected';
 }
 
-// ===== Knowledge Base (IndexedDB) - UNCHANGED =====
+// ===== Knowledge Base (IndexedDB) - UPDATED =====
 class LocalKnowledgeBase {
   constructor() {
     this.db = null;
@@ -1036,7 +905,7 @@ class LocalKnowledgeBase {
 
   async initDatabase() {
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open('BathalaKB_v4', 1);
+      const req = indexedDB.open('BathalaKB_v5', 2); // Updated version
 
       req.onerror = () => reject(req.error);
       req.onsuccess = () => { this.db = req.result; resolve(); };
@@ -1050,6 +919,7 @@ class LocalKnowledgeBase {
           s.createIndex('uploadDate', 'uploadDate');
           s.createIndex('searchableContent', 'searchableContent');
           s.createIndex('conversionType', 'conversionType');
+          s.createIndex('ocrEnhanced', 'ocrEnhanced');
         }
 
         if (!db.objectStoreNames.contains('responses')) {
@@ -1061,6 +931,14 @@ class LocalKnowledgeBase {
           const h = db.createObjectStore('history', { keyPath: 'id' });
           h.createIndex('type', 'type');
           h.createIndex('createdAt', 'createdAt');
+        }
+
+        // Add OCR content index for better searching
+        if (e.oldVersion < 2) {
+          const s = db.transaction.objectStore('documents');
+          if (!s.indexNames.contains('ocrContent')) {
+            s.createIndex('ocrContent', 'searchableContent');
+          }
         }
       };
     });
@@ -1079,7 +957,8 @@ class LocalKnowledgeBase {
       size: file.size,
       wordCount: (searchableContent || '').split(/\s+/).filter(Boolean).length,
       storagePath: 'Ai CHIP',
-      conversionType: conversionType || 'Direct Processing'
+      conversionType: conversionType || 'Direct Processing',
+      ocrEnhanced: conversionType === 'OCR Enhanced'
     };
 
     const tx = this.db.transaction(['documents'], 'readwrite');
@@ -1112,6 +991,7 @@ class LocalKnowledgeBase {
     });
   }
 
+  // UPDATED: Improved searchDocuments function
   async searchDocuments(query) {
     await this.ready;
     const docs = await this.getAllDocuments();
@@ -1121,26 +1001,60 @@ class LocalKnowledgeBase {
     const results = [];
 
     for (const d of docs) {
-      const content = d.content.toLowerCase();
-      const search = d.searchableContent || '';
-      const fname = d.filename.toLowerCase();
+      // Search in multiple fields
+      const searchable = d.searchableContent || '';
+      const fullContent = d.content || '';
+      const filename = d.filename.toLowerCase();
+      
       let score = 0;
+      let termMatches = new Set(); // Track which terms were found
 
-      for (const t of terms) {
-        if (fname.includes(t)) score += 15;
-
-        const cm = (content.match(new RegExp(t, 'gi')) || []).length;
-        if (cm > 0) score += cm * 2;
-
-        const sm = (search.match(new RegExp(t, 'gi')) || []).length;
-        if (sm > 0) score += sm * 5;
+      // Combine searchable content and full content
+      const combinedContent = (searchable + ' ' + fullContent).toLowerCase();
+      
+      for (const term of terms) {
+        // Check filename
+        if (filename.includes(term)) {
+          score += 20;
+          termMatches.add(term);
+        }
+        
+        // Check searchable content (OCR text) - higher weight
+        if (searchable.toLowerCase().includes(term)) {
+          const occurrences = (searchable.toLowerCase().match(new RegExp(term, 'gi')) || []).length;
+          score += occurrences * 10;
+          termMatches.add(term);
+        }
+        
+        // Check full content
+        if (fullContent.toLowerCase().includes(term)) {
+          const occurrences = (fullContent.toLowerCase().match(new RegExp(term, 'gi')) || []).length;
+          score += occurrences * 5;
+          termMatches.add(term);
+        }
       }
 
-      if (content.includes(query.toLowerCase())) score += 50;
-      if (score > 0) results.push({ d, score });
+      // Bonus for matching all terms
+      if (termMatches.size === terms.length) {
+        score += 50;
+      }
+
+      if (score > 0) {
+        results.push({ 
+          d, 
+          score,
+          termMatches: termMatches.size
+        });
+      }
     }
 
-    return results.sort((a, b) => b.score - a.score).map(r => r.d);
+    return results
+      .sort((a, b) => {
+        // Sort by score, then by number of matching terms
+        if (b.score !== a.score) return b.score - a.score;
+        return b.termMatches - a.termMatches;
+      })
+      .map(r => r.d);
   }
 
   async putResponse(fingerprint, payload) {
@@ -1203,7 +1117,7 @@ async function fingerprintOf(obj) {
   return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// ===== File Processor (UNCHANGED) =====
+// ===== File Processor =====
 class FileProcessor {
   showProgress() {
     const info = byId('fileProcessingInfo');
@@ -1280,7 +1194,7 @@ class FileProcessor {
         const pt = tc.items.map(i => i.str).join(' ');
 
         if (pt.trim().length > 10) {
-          text += `Page ${n}: ${pt}\n\n`;
+          text += `[Page ${n}]: ${pt}\n\n`;
           textPages++;
         } else {
           const vp = page.getViewport({ scale: 3 });
@@ -1447,7 +1361,7 @@ CONVERSION_TYPE: ${conv}`;
 
 const fileProcessor = new FileProcessor();
 
-// Documents list renderers (UNCHANGED)
+// Documents list renderers
 async function renderDocuments(into) {
   if (!into) return;
 
@@ -1489,22 +1403,49 @@ async function deleteDocument(id) {
   toast('Document deleted', 'warn');
 }
 
-// Highlight search terms (UNCHANGED)
+// UPDATED: Highlight search terms function
 function highlight(text, q) {
-  if (!q || !text) return text;
+  if (!q || !text || typeof text !== 'string') return text;
 
   const terms = q.split(/\s+/).filter(t => t.length > 2);
-  let t = text;
+  let highlightedText = text;
 
-  for (const term of terms) {
-    const re = new RegExp(`(${term.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')})`, 'gi');
-    t = t.replace(re, '<span style="background:yellow;color:#000;border-radius:3px;padding:0 3px">$1</span>');
-  }
+  terms.forEach(term => {
+    // Escape regex special characters
+    const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(${escapedTerm})`, 'gi');
+    
+    highlightedText = highlightedText.replace(regex, 
+      '<span style="background: #ffff00; color: #000; font-weight: bold; padding: 1px 3px; border-radius: 3px;">$1</span>'
+    );
+  });
 
-  return t;
+  return highlightedText;
 }
 
-// Provider arbitration (UNCHANGED)
+// Helper function to split content into pages/sections
+function splitIntoPages(content) {
+  // For PDFs and OCR documents, look for page markers
+  if (content.includes('[OCR Page') || content.includes('[Page ')) {
+    const pageRegex = /(?:\[(?:OCR )?Page \d+\]:)/gi;
+    const sections = content.split(pageRegex);
+    
+    // Remove empty sections and clean up
+    const cleanedSections = sections
+      .filter(section => section && section.trim().length > 0)
+      .map(section => section.trim());
+    
+    // If we found page markers, return them
+    if (cleanedSections.length > 0) {
+      return cleanedSections;
+    }
+  }
+  
+  // For other documents, split by large whitespace or line breaks
+  return content.split(/\n\s*\n/).filter(section => section.trim().length > 50);
+}
+
+// Provider arbitration
 function getArbitrationProvider() {
   for (const p of ['openai', 'deepseek', 'grok']) {
     const el = byId(`${p}Key`);
@@ -1513,7 +1454,7 @@ function getArbitrationProvider() {
   return null;
 }
 
-// Combined AI Query (UNCHANGED)
+// Combined AI Query
 async function combinedAIQuery(provider, query, apiKey, persona) {
   const relevantDocs = await knowledgeBase.searchDocuments(query);
 
@@ -1541,7 +1482,7 @@ ${all}`;
   return await queryAI(provider, enhanced, apiKey, persona);
 }
 
-// Database AI Query (UNCHANGED)
+// Database AI Query
 async function databaseAIQuery(provider, query, apiKey, persona) {
   const connectedDbs = dbManager.getConnectedDatabases();
   
@@ -1599,7 +1540,7 @@ Focus on the database structure and how it relates to the user's query.`;
   return await queryAI(provider, enhanced, apiKey, persona);
 }
 
-// Super Mode AI Query (UNCHANGED)
+// Super Mode AI Query
 async function superModeAIQuery(provider, query, apiKey, persona) {
   const relevantDocs = await knowledgeBase.searchDocuments(query);
   const connectedDbs = dbManager.getConnectedDatabases();
@@ -1654,7 +1595,7 @@ Perform comprehensive analysis using ALL available data sources. Integrate insig
   return await queryAI(provider, enhanced, apiKey, persona);
 }
 
-// Forecast AI Query (UNCHANGED)
+// Forecast AI Query
 async function forecastAIQuery(provider, query, apiKey, persona) {
   const resultsCards = $$('.response-card');
   if (resultsCards.length === 0) {
@@ -1702,7 +1643,120 @@ Focus on actionable insights and evidence-based projections.`;
   return await queryAI(provider, enhanced, apiKey, persona);
 }
 
-// Render responses (UPDATED)
+// ===== UPDATED QUERYAI FUNCTION =====
+async function queryAI(provider, query, apiKey, persona) {
+  const start = Date.now();
+  const system = PERSONA[persona || 'strategist'];
+  const model = API_CONFIG[provider].model;
+
+  const fp = await fingerprintOf({ provider, model, persona, query });
+  const cached = await knowledgeBase.getResponse(fp);
+
+  if (cached) {
+    return { success: true, content: cached.content, responseTime: 0, cached: true };
+  }
+
+  try {
+    const apiUrl = getApiUrl(provider);
+    
+    const res = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: query }
+        ],
+        max_tokens: 1000,
+        temperature: 0.7
+      })
+    });
+
+    if (!res.ok) {
+      const t = await res.text();
+      throw new Error(`API ${res.status} - ${t}`);
+    }
+
+    const data = await res.json();
+    const content = data.choices?.[0]?.message?.content || '[No content]';
+
+    await knowledgeBase.putResponse(fp, { content, at: Date.now() });
+    return { success: true, content, responseTime: Date.now() - start };
+  } catch (e) {
+    console.error(`${provider} API error:`, e);
+    
+    // Special handling for CORS errors
+    if (e.message.includes('NetworkError') || e.message.includes('Failed to fetch')) {
+      return { 
+        success: false, 
+        error: `CORS/Network Error. When deploying to Vercel, you need to add a proxy server file. Create '/api/proxy.js' with the code provided in the deployment instructions.`,
+        responseTime: Date.now() - start 
+      };
+    }
+    
+    return { success: false, error: e.message, responseTime: Date.now() - start };
+  }
+}
+
+// ===== UPDATED TEST API CONNECTION =====
+async function testApiConnection(provider) {
+  const apiKeyEl = byId(`${provider}Key`);
+  const apiKey = apiKeyEl?.value;
+
+  if (!apiKey) {
+    updateApiStatus(provider, 'error', 'No API key provided');
+    return false;
+  }
+
+  try {
+    // Skip actual connection test (models endpoint often has CORS issues)
+    // Instead, try a minimal test query
+    const testQuery = "Hello";
+    const system = "You are a test agent. Respond with 'Connection successful' if you receive this message.";
+    
+    const apiUrl = getApiUrl(provider);
+    
+    const res = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: API_CONFIG[provider].model,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: testQuery }
+        ],
+        max_tokens: 10
+      })
+    });
+
+    if (res.ok) {
+      updateApiStatus(provider, 'connected');
+      return true;
+    }
+
+    const errorText = await res.text();
+    updateApiStatus(provider, 'error', `HTTP ${res.status}`);
+    return false;
+  } catch (e) {
+    // If it's a CORS error, show helpful message
+    if (e.message.includes('NetworkError') || e.message.includes('Failed to fetch')) {
+      updateApiStatus(provider, 'saved', 'Configured (proxy needed for Vercel)');
+      return true; // Return true so UI shows as configured
+    }
+    
+    updateApiStatus(provider, 'error', `Connection failed: ${e.message}`);
+    return false;
+  }
+}
+
+// Render responses
 function renderCompareResults(query, results) {
   let html = `<h3 style="color:var(--warn);margin-bottom:12px">🚀 AI SEARCH: "${query}"</h3><div class="response-grid">`;
   for(const r of results){
@@ -1717,13 +1771,13 @@ function renderCompareResults(query, results) {
   return html;
 }
 
-// Loading helpers for search (UNCHANGED)
+// Loading helpers for search
 function setSearchVisible() {
   const sec = byId('resultsSection');
   if(sec) sec.style.display='';
 }
 
-// Search actions + History push (UPDATED)
+// Search actions + History push
 async function performAISearch() {
   const query=byId('searchInput').value.trim();
   const provider=byId('aiProvider').value;
@@ -1761,7 +1815,6 @@ async function performAISearch() {
   byId('statusText').textContent='BATHALA INTELLIGENCE: AI search completed';
 }
 
-// All other search functions remain UNCHANGED...
 async function performLocalFileSearch(){
   const q=byId('searchInput').value.trim(); if(!q) return toast('Enter a search query','warn');
   setSearchVisible(); byId('statusText').textContent='BATHALA INTELLIGENCE: Searching local file database…';
@@ -1777,20 +1830,125 @@ async function performLocalFileSearch(){
   }
 }
 
-async function performLocalContentSearch(){
-  const q=byId('searchInput').value.trim(); if(!q) return toast('Enter a search query','warn');
-  setSearchVisible(); byId('statusText').textContent='BATHALA INTELLIGENCE: Searching local content (OCR)…';
-  const docs=await knowledgeBase.searchDocuments(q);
-  if(docs.length===0){
+// UPDATED: performLocalContentSearch function
+async function performLocalContentSearch() {
+  const q = byId('searchInput').value.trim();
+  if (!q) return toast('Enter a search query', 'warn');
+  
+  setSearchVisible(); 
+  byId('statusText').textContent = 'BATHALA INTELLIGENCE: Searching local content (OCR)…';
+  
+  const docs = await knowledgeBase.searchDocuments(q);
+  
+  if (docs.length === 0) {
     byId('resultsArea').innerHTML = `<div class='card'>❌ No content matches "${q}"</div>`;
   } else {
-    let html='';
-    docs.forEach((d)=>{
-      const prev = highlight(d.content.slice(0,1500), q);
-      html+=`<div class='response-card'><div class='response-header'><div class='provider-badge'>📖 ${d.filename}</div><div>${(d.size/(1024*1024)).toFixed(2)}MB</div></div><div class='response-content'>${prev}${d.content.length>1500?'…':''}</div></div>`;
+    let html = `<div style="margin-bottom: 16px; padding: 10px; background: rgba(0,255,136,.1); border-radius: 8px;">
+                  <strong>🔍 Search Results for: "${q}"</strong><br>
+                  Found ${docs.length} document(s) containing your search terms
+                </div>`;
+    
+    // Process each document to find ALL occurrences
+    docs.forEach((d, docIndex) => {
+      // Get the searchable content (OCR converted text)
+      const searchableContent = d.searchableContent || d.content || '';
+      
+      // Split into pages/sections
+      const sections = splitIntoPages(searchableContent);
+      
+      // Find all sections that contain the search terms
+      const matchingSections = [];
+      
+      const searchTerms = q.toLowerCase().split(/\s+/).filter(term => term.length > 2);
+      
+      sections.forEach((section, sectionIndex) => {
+        const sectionLower = section.toLowerCase();
+        let hasMatch = false;
+        
+        // Check if any search term appears in this section
+        for (const term of searchTerms) {
+          if (sectionLower.includes(term)) {
+            hasMatch = true;
+            break;
+          }
+        }
+        
+        if (hasMatch) {
+          // Count occurrences
+          let totalOccurrences = 0;
+          let highlightedSection = section;
+          
+          // Highlight ALL occurrences of each search term
+          searchTerms.forEach(term => {
+            const regex = new RegExp(`(${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+            const matches = (section.match(regex) || []).length;
+            totalOccurrences += matches;
+            
+            // Apply highlighting
+            highlightedSection = highlightedSection.replace(regex, 
+              '<span style="background: #ffff00; color: #000; font-weight: bold; padding: 1px 3px; border-radius: 3px;">$1</span>'
+            );
+          });
+          
+          matchingSections.push({
+            index: sectionIndex,
+            content: highlightedSection,
+            occurrences: totalOccurrences
+          });
+        }
+      });
+      
+      if (matchingSections.length > 0) {
+        // Create document header with match count
+        const totalMatches = matchingSections.reduce((sum, section) => sum + section.occurrences, 0);
+        
+        html += `<div class='response-card' style="margin-bottom: 20px;">
+          <div class='response-header'>
+            <div class='provider-badge'>📖 ${d.filename}</div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <span style="background: var(--neon); color: #000; padding: 2px 8px; border-radius: 6px; font-size: 0.8rem;">
+                ${matchingSections.length} section(s) · ${totalMatches} matches
+              </span>
+              ${d.conversionType === 'OCR Enhanced' ? 
+                '<span style="background: var(--violet); color: #fff; padding: 2px 8px; border-radius: 6px; font-size: 0.8rem;">OCR</span>' : 
+                ''}
+            </div>
+          </div>
+          <div class='response-content'>`;
+        
+        // Show each matching section
+        matchingSections.forEach((section, sectionIdx) => {
+          html += `<div style="margin-bottom: 20px; padding: 12px; background: rgba(0,0,0,.2); border-radius: 8px; border-left: 4px solid var(--neon);">
+            <div style="margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+              <strong style="color: var(--neon);">
+                📄 ${d.conversionType === 'OCR Enhanced' ? 'Page' : 'Section'} ${section.index + 1}
+              </strong>
+              <span style="font-size: 0.8rem; background: rgba(255,255,0,.2); padding: 2px 8px; border-radius: 4px;">
+                ${section.occurrences} occurrence(s)
+              </span>
+            </div>
+            <div style="white-space: pre-wrap; max-height: 400px; overflow-y: auto; padding: 10px; background: rgba(0,0,0,.4); border-radius: 6px;">
+              ${section.content}
+            </div>
+          </div>`;
+        });
+        
+        html += `</div>
+          <div style="margin-top: 12px; padding: 8px; background: rgba(0,255,136,.05); border-radius: 6px; font-size: 0.8rem;">
+            <strong>Document Info:</strong> ${d.fileType}, ${(d.size/(1024*1024)).toFixed(2)}MB, 
+            ${d.wordCount} words • <strong>Processing:</strong> ${d.conversionType || 'Unknown'}
+          </div>
+        </div>`;
+      }
     });
+    
     byId('resultsArea').innerHTML = html;
-    await knowledgeBase.pushHistory({ type:'search', title:`Content: ${q.slice(0,48)}`, payload: html }); await refreshHistory();
+    await knowledgeBase.pushHistory({ 
+      type: 'search', 
+      title: `Content: "${q.slice(0, 30)}${q.length > 30 ? '...' : ''}"`, 
+      payload: html 
+    }); 
+    await refreshHistory();
   }
 }
 
@@ -2025,7 +2183,7 @@ async function performForecastAnalysis() {
   byId('statusText').textContent = 'BATHALA INTELLIGENCE: Forecast analysis completed';
 }
 
-// ===== Consensus Synthesis + Visualization (UNCHANGED) =====
+// ===== Consensus Synthesis + Visualization =====
 function jaccard(a,b){
   const A=new Set((a||'').split(/\W+/).map(x=>x.toLowerCase()).filter(Boolean));
   const B=new Set((b||'').split(/\W+/).map(x=>x.toLowerCase()).filter(Boolean));
@@ -2161,7 +2319,7 @@ Return ONLY JSON object.`;
   toast('Consensus synthesized','success');
 }
 
-// ===== History renderers (UNCHANGED) =====
+// ===== History renderers =====
 async function refreshHistory(){
   const s=byId('searchHistory'); const c=byId('consensusHistory');
   if(!s||!c) return;
@@ -2177,7 +2335,7 @@ async function restoreHistory(id){
   req.onsuccess=()=>{ const rec=req.result; if(rec){ setSearchVisible(); if(rec.type==='search'){ byId('resultsArea').innerHTML = rec.payload; } else { byId('consensusBlock').style.display='block'; byId('consensusBlock').innerHTML = rec.payload; } } };
 }
 
-// ===== Database Manager (UNCHANGED from your original) =====
+// ===== Database Manager =====
 const BACKEND_CONFIG = {
   enabled: false,
   url: 'http://localhost:3001/api',
@@ -2585,7 +2743,7 @@ function removeDatabase(connectionId) {
   }
 }
 
-// Render database connections (UNCHANGED)
+// Render database connections
 function renderDatabaseConnections() {
   const container = byId('databaseConnections');
   const connections = dbManager.getConnections();
@@ -2717,7 +2875,7 @@ function renderDatabaseConnections() {
   }).join('');
 }
 
-// Show add connection modal (UNCHANGED)
+// Show add connection modal
 function showAddConnectionModal() {
   const modalHtml = `
     <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.8); display: flex; align-items: center; justify-content: center; z-index: 10000;">
@@ -2891,7 +3049,7 @@ async function createConnection() {
   }
 }
 
-// ===== Events (UPDATED) =====
+// ===== Events =====
 function bindEvents(){
   const fileInput = byId('fileInput');
   if(fileInput){
@@ -2961,7 +3119,7 @@ function bindEvents(){
   });
 }
 
-// ===== Init (UPDATED) =====
+// ===== Init =====
 (async function init(){
   await knowledgeBase.ready;
   loadApiKeys();
