@@ -614,6 +614,9 @@
             <div class="status-dot" id="deepseekStatus"></div>
             <span id="deepseekStatusText">Not configured</span>
           </div>
+          <button class="btn btn-warning" onclick="testIndividualAgent('deepseek')" style="margin-top: 10px; width: 100%;">
+            🧪 Test Connection
+          </button>
         </div>
         <div class="card col-4">
           <h3>⚡ AI Agent 2</h3>
@@ -623,6 +626,9 @@
             <div class="status-dot" id="openaiStatus"></div>
             <span id="openaiStatusText">Not configured</span>
           </div>
+          <button class="btn btn-warning" onclick="testIndividualAgent('openai')" style="margin-top: 10px; width: 100%;">
+            🧪 Test Connection
+          </button>
         </div>
         <div class="card col-4">
           <h3>🎯 AI Agent 3</h3>
@@ -632,8 +638,40 @@
             <div class="status-dot" id="grokStatus"></div>
             <span id="grokStatusText">Not configured</span>
           </div>
+          <button class="btn btn-warning" onclick="testIndividualAgent('grok')" style="margin-top: 10px; width: 100%;">
+            🧪 Test Connection
+          </button>
         </div>
       </div>
+      
+      <!-- TROUBLESHOOTING CARD -->
+      <div class="card col-12" style="margin-top: 20px;">
+        <h3>🛠️ TROUBLESHOOTING</h3>
+        <div style="background: rgba(255,165,0,.1); border: 1px solid var(--warn); border-radius: 8px; padding: 12px; margin-top: 8px;">
+          <strong>Common Issues:</strong>
+          <div style="font-size: 0.85rem; margin-top: 8px;">
+            <strong>AI Agent 1 (DeepSeek):</strong><br>
+            • Endpoint: <code>https://api.deepseek.com/v1/chat/completions</code><br>
+            • API keys start with <code>sk-</code><br>
+            • For CORS issues on GitHub/Vercel, check API key permissions<br><br>
+            
+            <strong>AI Agent 2 (OpenAI):</strong><br>
+            • Endpoint: <code>https://api.openai.com/v1/chat/completions</code><br>
+            • API keys start with <code>sk-</code><br><br>
+            
+            <strong>AI Agent 3 (Grok/xAI):</strong><br>
+            • Endpoint: <code>https://api.x.ai/v1/chat/completions</code><br>
+            • API keys start with <code>xai-</code><br>
+            • Requires xAI API access (waitlist)<br><br>
+            
+            <strong>Network Errors on GitHub/Vercel:</strong><br>
+            • CORS issues: Try API keys with proper CORS headers<br>
+            • Ensure API services allow requests from your domain<br>
+            • Check browser console for detailed error messages
+          </div>
+        </div>
+      </div>
+      
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
         <button class="btn btn-primary" id="connectAgentsBtn">🛡️ CONNECT AGENTS</button>
         <button class="btn btn-primary" id="saveConfigBtn">💾 SAVE CONFIGURATION</button>
@@ -793,26 +831,29 @@ const DATABASE_TEMPLATES = {
   }
 };
 
-// ===== API CONFIG WITH PROPER ENDPOINTS =====
+// ===== FIXED API CONFIG WITH CORRECT ENDPOINTS =====
 const API_CONFIG = {
   deepseek: {
     name: 'AI Agent 1',
-    apiUrl: 'https://api.deepseek.com/chat/completions',
-    model: 'deepseek-chat'
+    apiUrl: 'https://api.deepseek.com/v1/chat/completions', // FIXED: Added /v1/
+    model: 'deepseek-chat',
+    keyPrefix: 'sk-'
   },
   openai: {
     name: 'AI Agent 2',
     apiUrl: 'https://api.openai.com/v1/chat/completions',
-    model: 'gpt-3.5-turbo'
+    model: 'gpt-3.5-turbo',
+    keyPrefix: 'sk-'
   },
   grok: {
     name: 'AI Agent 3',
     apiUrl: 'https://api.x.ai/v1/chat/completions',
-    model: 'grok-beta'
+    model: 'grok-beta',
+    keyPrefix: 'xai-'
   }
 };
 
-// ===== UPDATED QUERYAI FUNCTION WITH CORS HANDLING =====
+// ===== IMPROVED QUERYAI FUNCTION WITH BETTER ERROR HANDLING =====
 async function queryAI(provider, query, apiKey, persona) {
   const start = Date.now();
   const system = PERSONA[persona || 'strategist'];
@@ -827,6 +868,8 @@ async function queryAI(provider, query, apiKey, persona) {
 
   try {
     const apiUrl = API_CONFIG[provider].apiUrl;
+    
+    console.log(`Querying ${provider} at ${apiUrl}`);
     
     const res = await fetch(apiUrl, {
       method: 'POST',
@@ -846,8 +889,21 @@ async function queryAI(provider, query, apiKey, persona) {
     });
 
     if (!res.ok) {
-      const t = await res.text();
-      throw new Error(`API ${res.status} - ${t}`);
+      const errorText = await res.text();
+      console.error(`${provider} API error ${res.status}:`, errorText);
+      
+      let errorMessage = `API Error ${res.status}`;
+      if (res.status === 401) {
+        errorMessage = 'Invalid API key';
+      } else if (res.status === 404) {
+        errorMessage = 'API endpoint not found';
+      } else if (res.status === 429) {
+        errorMessage = 'Rate limit exceeded';
+      } else if (res.status === 403) {
+        errorMessage = 'Access forbidden - check API permissions';
+      }
+      
+      throw new Error(`${errorMessage}. Check your API key and network connection.`);
     }
 
     const data = await res.json();
@@ -858,15 +914,24 @@ async function queryAI(provider, query, apiKey, persona) {
   } catch (e) {
     console.error(`${provider} API error:`, e);
     
+    // Handle CORS errors specifically
+    if (e.message.includes('CORS') || e.message.includes('Failed to fetch') || e.message.includes('NetworkError')) {
+      return { 
+        success: false, 
+        error: `CORS/Network Error: Unable to connect to ${API_CONFIG[provider].name}. This may be due to browser security restrictions when hosted on GitHub/Vercel. Try using the API in a local environment or check API CORS settings.`,
+        responseTime: Date.now() - start 
+      };
+    }
+    
     return { 
       success: false, 
-      error: `API Error: ${e.message}. Check API key and network.`,
+      error: `API Error: ${e.message}. Check API key format and ensure it's valid for ${API_CONFIG[provider].name}.`,
       responseTime: Date.now() - start 
     };
   }
 }
 
-// ===== FIXED TEST API CONNECTION FUNCTION =====
+// ===== IMPROVED TEST API CONNECTION FUNCTION =====
 async function testApiConnection(provider) {
   const apiKeyEl = byId(`${provider}Key`);
   const apiKey = apiKeyEl?.value;
@@ -876,13 +941,21 @@ async function testApiConnection(provider) {
     return false;
   }
 
+  // Validate API key format
+  const keyPrefix = API_CONFIG[provider].keyPrefix;
+  if (!apiKey.startsWith(keyPrefix)) {
+    updateApiStatus(provider, 'error', `Invalid format - should start with "${keyPrefix}"`);
+    return false;
+  }
+
   try {
     // Simple API test with minimal request
     const testQuery = "Hello";
     const system = "You are a test agent. Respond with 'OK' if you receive this message.";
     const model = API_CONFIG[provider].model;
-    
     const apiUrl = API_CONFIG[provider].apiUrl;
+
+    console.log(`Testing ${provider} connection to ${apiUrl}`);
     
     const res = await fetch(apiUrl, {
       method: 'POST',
@@ -906,26 +979,52 @@ async function testApiConnection(provider) {
     }
 
     const errorText = await res.text();
-    updateApiStatus(provider, 'error', `HTTP ${res.status}`);
-    console.error(`${provider} test failed:`, errorText);
+    console.error(`${provider} test failed with status ${res.status}:`, errorText);
+    
+    // Handle specific status codes
+    if (res.status === 401) {
+      updateApiStatus(provider, 'error', 'Invalid API key');
+    } else if (res.status === 404) {
+      updateApiStatus(provider, 'error', 'API endpoint not found');
+    } else if (res.status === 429) {
+      updateApiStatus(provider, 'error', 'Rate limit exceeded');
+    } else if (res.status === 403) {
+      updateApiStatus(provider, 'error', 'Access forbidden');
+    } else {
+      updateApiStatus(provider, 'error', `HTTP ${res.status} error`);
+    }
     return false;
   } catch (e) {
     console.error(`${provider} connection error:`, e);
     
-    // For DeepSeek, try with correct endpoint
-    if (provider === 'deepseek' && e.message.includes('CORS') || e.message.includes('Failed to fetch')) {
-      updateApiStatus(provider, 'error', 'CORS blocked - use a proxy or run from server');
-      return false;
-    }
-    
-    // For OpenAI 404 errors, check the endpoint
-    if (provider === 'openai' && e.message.includes('404')) {
-      updateApiStatus(provider, 'error', 'API endpoint not found - check API key format');
+    // CORS specific handling for GitHub/Vercel hosting
+    if (e.message.includes('CORS') || e.message.includes('Failed to fetch') || e.message.includes('NetworkError')) {
+      updateApiStatus(provider, 'error', 'CORS blocked on GitHub/Vercel');
       return false;
     }
     
     updateApiStatus(provider, 'error', `Connection failed: ${e.message}`);
     return false;
+  }
+}
+
+// ===== INDIVIDUAL AGENT TEST FUNCTION =====
+async function testIndividualAgent(provider) {
+  const apiKey = byId(`${provider}Key`)?.value;
+  if (!apiKey) {
+    toast(`Enter ${API_CONFIG[provider].name} API key first`, 'warn');
+    return;
+  }
+  
+  byId(`${provider}StatusText`).textContent = 'Testing...';
+  byId(`${provider}Status`).className = 'status-dot connecting';
+  
+  const result = await testApiConnection(provider);
+  if (result) {
+    toast(`${API_CONFIG[provider].name} connected successfully!`, 'success');
+  } else {
+    const errorText = byId(`${provider}StatusText`).textContent;
+    toast(`${API_CONFIG[provider].name} failed: ${errorText}`, 'error');
   }
 }
 
